@@ -1,0 +1,195 @@
+<Page x:Class="Acczite20.Views.Pages.SyncMonitorPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.modernwpf.com/2019"
+      Title="Sync Health Monitor"
+      Background="{StaticResource LightTealBg}">
+
+    <Page.Resources>
+        <Style x:Key="ModernDataGridHeader" TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource CharcoalText}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="BorderBrush" Value="#E5E7EB"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+    </Page.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="1.2*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header Section -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,15">
+            <StackPanel>
+                <TextBlock Text="Sync Health Monitor" FontSize="28" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}"/>
+                <TextBlock Text="Monitor real-time synchronization between Tally and Local Database" FontSize="13" Foreground="{StaticResource CharcoalText}" Opacity="0.6" Margin="0,4,0,0"/>
+            </StackPanel>
+            
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                <Button Content=" Refresh" FontFamily="Segoe MDL2 Assets" Click="Refresh_Click" 
+                        Style="{StaticResource SidebarButtonStyle}" Margin="0,0,10,0" ToolTip="Refresh status"/>
+            </StackPanel>
+        </DockPanel>
+        
+        <!-- Summary Stats Cards -->
+        <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,24">
+            <!-- Tally Status -->
+            <Border Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="20" Margin="0,0,16,0" Effect="{StaticResource CardShadow}" BorderBrush="{StaticResource GoldMetallic}" BorderThickness="0,3,0,0">
+                <StackPanel>
+                    <TextBlock Text="TALLY ERP 9" FontSize="11" FontWeight="Bold" Foreground="#6B7280" Opacity="0.8"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Ellipse x:Name="TallyDot" Width="10" Height="10" Fill="#10B981" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="TallyStatusText" Text="Connected" FontSize="20" FontWeight="Bold" Foreground="{StaticResource CharcoalText}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Sync State -->
+            <Border Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="20" Margin="0,0,16,0" Effect="{StaticResource CardShadow}" BorderBrush="{StaticResource PrimaryTeal}" BorderThickness="0,3,0,0">
+                <StackPanel>
+                    <TextBlock Text="SYNC ENGINE" FontSize="11" FontWeight="Bold" Foreground="#6B7280" Opacity="0.8"/>
+                    <TextBlock x:Name="SyncStateText" Text="Idle" FontSize="20" FontWeight="Bold" Foreground="{StaticResource CharcoalText}" Margin="0,5,0,0"/>
+                    <TextBlock Text="{Binding CurrentStageDetail}" FontSize="12" Foreground="#64748B" Margin="0,6,0,0" TextWrapping="Wrap" MinHeight="32"/>
+                    <ProgressBar x:Name="SyncProgress" Height="6" Margin="0,10,0,0" Visibility="Collapsed"
+                                 IsIndeterminate="{Binding IsProgressIndeterminate}"
+                                 Value="{Binding ProgressPercent}"
+                                 Foreground="{StaticResource PrimaryTeal}" Background="#DDE7EE"/>
+                    <DockPanel Margin="0,10,0,0">
+                        <TextBlock Text="{Binding ProgressCaption}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}"/>
+                        <TextBlock Text="{Binding CheckpointStatus}" DockPanel.Dock="Right" FontSize="11" Foreground="#64748B"/>
+                    </DockPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Total Synced -->
+            <Border Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="20" Margin="0,0,16,0" Effect="{StaticResource CardShadow}" BorderBrush="{StaticResource PrimaryTeal}" BorderThickness="0,3,0,0">
+                <StackPanel>
+                    <TextBlock Text="TODAY'S RECORDS" FontSize="11" FontWeight="Bold" Foreground="#6B7280" Opacity="0.8"/>
+                    <TextBlock x:Name="TotalSyncedText" Text="0" FontSize="20" FontWeight="Bold" Foreground="{StaticResource CharcoalText}" Margin="0,5,0,0"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Last Run -->
+            <Border Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="20" Effect="{StaticResource CardShadow}" BorderBrush="{StaticResource GoldMetallic}" BorderThickness="0,3,0,0">
+                <StackPanel>
+                    <TextBlock Text="LAST SUCCESSFUL RUN" FontSize="11" FontWeight="Bold" Foreground="#6B7280" Opacity="0.8"/>
+                    <TextBlock x:Name="LastSyncText" Text="Never" FontSize="20" FontWeight="Bold" Foreground="{StaticResource CharcoalText}" Margin="0,5,0,0"/>
+                </StackPanel>
+            </Border>
+        </UniformGrid>
+
+        <!-- Detailed Sync Table -->
+        <Border Grid.Row="2" Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="20" Margin="0,0,0,24" Effect="{StaticResource CardShadow}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                
+                <TextBlock Text="Entity-Wise Synchronization Status" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}" Margin="0,0,0,15"/>
+                
+                <DataGrid Grid.Row="1" x:Name="MetadataGrid" AutoGenerateColumns="False" IsReadOnly="True" 
+                          Background="Transparent" BorderThickness="0" GridLinesVisibility="Horizontal"
+                          HeadersVisibility="Column" SelectionUnit="FullRow" RowHeight="45"
+                          ColumnHeaderStyle="{StaticResource ModernDataGridHeader}"
+                          HorizontalGridLinesBrush="#F3F4F6"
+                          ItemsSource="{Binding EntitySyncDetails}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="ENTITY TYPE" Binding="{Binding EntityName}" Width="1.5*">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="VerticalAlignment" Value="Center" />
+                                    <Setter Property="Padding" Value="10,0" />
+                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="LAST SYNC" Binding="{Binding LastSync, StringFormat=\{0:dd MMM HH:mm\}}" Width="*">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="VerticalAlignment" Value="Center" />
+                                    <Setter Property="Padding" Value="10,0" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="RECORDS" Binding="{Binding RecordsSynced}" Width="*">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="VerticalAlignment" Value="Center" />
+                                    <Setter Property="Padding" Value="10,0" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTemplateColumn Header="STATUS" Width="*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Border Background="{Binding StatusColor}" CornerRadius="20" Padding="12,4" HorizontalAlignment="Left" Margin="10,0">
+                                        <TextBlock Text="{Binding StatusText}" Foreground="White" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
+                                    </Border>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Border>
+
+        <!-- Premium Log View -->
+        <Border Grid.Row="3" Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="20" Effect="{StaticResource CardShadow}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                
+                <DockPanel Margin="0,0,0,12">
+                    <TextBlock Text="Activity Logs" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Border Background="#F3F4F6" CornerRadius="4" Padding="8,4">
+                            <TextBlock Text="REALTIME" FontSize="10" FontWeight="Bold" Foreground="#6B7280"/>
+                        </Border>
+                    </StackPanel>
+                </DockPanel>
+
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Logs}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#F3F4F6" BorderThickness="0,0,0,1" Padding="0,8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Timestamp, StringFormat=\{0:HH:mm:ss\}}" Foreground="#9CA3AF" FontSize="12" FontFamily="Consolas" Margin="0,0,12,0"/>
+                                        <Border Grid.Column="1" Width="45" Background="#F3F4F6" CornerRadius="4" Margin="0,0,12,0" HorizontalAlignment="Left">
+                                            <TextBlock Text="{Binding Level}" HorizontalAlignment="Center" FontSize="9" FontWeight="Bold" Foreground="#4B5563"/>
+                                        </Border>
+                                        <TextBlock Grid.Column="2" Text="{Binding Message}" FontSize="13" Foreground="{StaticResource CharcoalText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+
+        <!-- Bottom Action Bar -->
+        <Border Grid.Row="4" Margin="0,20,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="SyncButton" Content="Start Full Organization Sync" Click="SyncNow_Click" 
+                        Style="{StaticResource PrimaryButtonStyle}" Width="250" Height="42" FontSize="14" FontWeight="SemiBold"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Page>

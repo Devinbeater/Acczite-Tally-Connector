@@ -1,0 +1,98 @@
+<Page x:Class="Acczite20.Views.Pages.BalanceSheetPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.modernwpf.com/2019"
+      Title="Balance Sheet"
+      Background="{StaticResource LightTealBg}">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="Balance Sheet" FontSize="28" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <TextBlock Text="As On:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <DatePicker x:Name="AsOnDatePicker" Width="140" Margin="0,0,10,0"/>
+                <Button Content="Refresh" Click="Refresh_Click" Style="{StaticResource PrimaryButtonStyle}"/>
+            </StackPanel>
+        </DockPanel>
+
+        <!-- Balance Sheet Content -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1*"/>
+                <ColumnDefinition Width="1*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Liabilities (Left) -->
+            <Border Grid.Column="0" Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="20" Margin="0,0,10,0" Effect="{StaticResource CardShadow}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Liabilities" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}" Margin="0,0,0,15"/>
+                    
+                    <Grid DockPanel.Dock="Bottom" Margin="0,15,0,0">
+                        <TextBlock Text="Total Liabilities" FontWeight="Bold" FontSize="16"/>
+                        <TextBlock x:Name="TxtTotalLiabilities" Text="₹ 0.00" HorizontalAlignment="Right" FontWeight="Bold" FontSize="16"/>
+                    </Grid>
+
+                    <ScrollViewer>
+                        <ItemsControl x:Name="LiabilityList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Expander Header="{Binding GroupName}" Margin="0,0,0,5" FontWeight="Medium">
+                                        <ItemsControl ItemsSource="{Binding Ledgers}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="20,5,10,5">
+                                                        <TextBlock Text="{Binding LedgerName}"/>
+                                                        <TextBlock Text="{Binding Amount, StringFormat=N2}" HorizontalAlignment="Right"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Expander>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <!-- Assets (Right) -->
+            <Border Grid.Column="1" Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="20" Margin="10,0,0,0" Effect="{StaticResource CardShadow}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Assets" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}" Margin="0,0,0,15"/>
+
+                    <Grid DockPanel.Dock="Bottom" Margin="0,15,0,0">
+                        <TextBlock Text="Total Assets" FontWeight="Bold" FontSize="16"/>
+                        <TextBlock x:Name="TxtTotalAssets" Text="₹ 0.00" HorizontalAlignment="Right" FontWeight="Bold" FontSize="16"/>
+                    </Grid>
+
+                    <ScrollViewer>
+                        <ItemsControl x:Name="AssetList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Expander Header="{Binding GroupName}" Margin="0,0,0,5" FontWeight="Medium">
+                                        <ItemsControl ItemsSource="{Binding Ledgers}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="20,5,10,5">
+                                                        <TextBlock Text="{Binding LedgerName}"/>
+                                                        <TextBlock Text="{Binding Amount, StringFormat=N2}" HorizontalAlignment="Right"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Expander>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Page>

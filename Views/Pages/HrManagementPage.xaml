@@ -1,0 +1,98 @@
+<Page x:Class="Acczite20.Views.Pages.HrManagementPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+      xmlns:ui="http://schemas.modernwpf.com/2019"
+      mc:Ignorable="d" 
+      d:DesignHeight="700" d:DesignWidth="1100"
+      Title="HR Management"
+      Background="{StaticResource LightTealBg}">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,24">
+            <TextBlock Text="HR Management" FontSize="28" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}"/>
+            <TextBlock Text="View and manage employee attendance and payroll records" FontSize="14" Opacity="0.7" Margin="0,4,0,0"/>
+        </StackPanel>
+
+        <TabControl x:Name="HrTabs" Grid.Row="1" Background="White" Padding="16">
+            <TabItem Header="Attendance">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    
+                    <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,16">
+                        <Button Content="Refresh" Click="RefreshAttendance_Click" Style="{StaticResource DefaultButtonStyle}"/>
+                    </StackPanel>
+
+                    <DataGrid x:Name="AttendanceGrid" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True" ItemsSource="{Binding AttendanceRecords}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat={}{0:dd-MMM-yyyy}}" Width="120"/>
+                            <DataGridTextColumn Header="Employee" Binding="{Binding Name}" Width="150"/>
+                            <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100"/>
+                            <DataGridTextColumn Header="Check In" Binding="{Binding CheckIn, StringFormat={}{0:HH:mm}}" Width="100"/>
+                            <DataGridTextColumn Header="Check Out" Binding="{Binding CheckOut, StringFormat={}{0:HH:mm}}" Width="100"/>
+                            <DataGridTextColumn Header="Hours" Binding="{Binding HoursWorked}" Width="100"/>
+                            <DataGridTextColumn Header="Dept" Binding="{Binding Department}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Payroll">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,16">
+                        <Button Content="Refresh" Click="RefreshPayroll_Click" Style="{StaticResource DefaultButtonStyle}"/>
+                    </StackPanel>
+
+                    <DataGrid x:Name="PayrollGrid" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True" ItemsSource="{Binding PayrollRecords}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Period" Binding="{Binding Period}" Width="120"/>
+                            <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100"/>
+                            <DataGridTextColumn Header="Gross" Binding="{Binding Gross, StringFormat=N2}" Width="120"/>
+                            <DataGridTextColumn Header="Deductions" Binding="{Binding TotalDeductions, StringFormat=N2}" Width="120"/>
+                            <DataGridTextColumn Header="Net Pay" Binding="{Binding Net, StringFormat=N2}" FontWeight="SemiBold" Width="120"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Employees">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,16">
+                        <Button Content="Refresh" Click="RefreshEmployees_Click" Style="{StaticResource DefaultButtonStyle}"/>
+                    </StackPanel>
+
+                    <DataGrid x:Name="EmployeeGrid" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True" ItemsSource="{Binding Employees}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Code" Binding="{Binding EmployeeCode}" Width="100"/>
+                            <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="180"/>
+                            <DataGridTextColumn Header="Designation" Binding="{Binding Designation}" Width="150"/>
+                            <DataGridTextColumn Header="Dept" Binding="{Binding Department}" Width="150"/>
+                            <DataGridTextColumn Header="Email" Binding="{Binding Email}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <ui:ProgressRing x:Name="LoadingRing" Grid.Row="1" Width="50" Height="50" Visibility="Collapsed"/>
+    </Grid>
+</Page>

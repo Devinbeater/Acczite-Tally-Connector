@@ -1,0 +1,51 @@
+
+using System;
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
+
+class Program
+{
+    static async Task Main()
+    {
+        var httpClient = new HttpClient();
+        var from = DateTime.Now.AddDays(-10).ToString("dd-MMM-yyyy");
+        var to = DateTime.Now.ToString("dd-MMM-yyyy");
+        var envelope = $@"
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <EXPORTDATA>
+      <REQUESTDESC>
+        <STATICVARIABLES>
+          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+          <SVFromDate>{from}</SVFromDate>
+          <SVToDate>{to}</SVToDate>
+        </STATICVARIABLES>
+        <REPORTNAME>Day Book</REPORTNAME>
+      </REQUESTDESC>
+    </EXPORTDATA>
+  </BODY>
+</ENVELOPE>";
+        
+        try
+        {
+            var content = new StringContent(envelope, Encoding.UTF8, "application/xml");
+            var response = await httpClient.PostAsync("http://localhost:9000", content);
+            var body = await response.Content.ReadAsStringAsync();
+            Console.WriteLine("Tally Response:");
+            Console.WriteLine(body.Length > 500 ? body.Substring(0, 500) + "..." : body);
+            
+            if (body.Contains("LINEERROR"))
+                Console.WriteLine("ERROR: Found LINEERROR in Tally response.");
+            if (body.Contains("VOUCHER"))
+                Console.WriteLine("SUCCESS: Found VOUCHER in Tally response.");
+            else
+                Console.WriteLine("WARNING: NO VOUCHER found in Tally response.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Connection Exception: " + ex.Message);
+        }
+    }
+}

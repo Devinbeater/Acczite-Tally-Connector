@@ -1,0 +1,276 @@
+<Page x:Class="Acczite20.Views.Pages.TallySyncPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.modernwpf.com/2019"
+      Title="Tally Sync Page"
+      Background="{StaticResource LightTealBg}">
+
+    <Page.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <!-- Teal Spinner Animation -->
+        <Storyboard x:Key="SpinnerStoryboard" RepeatBehavior="Forever">
+            <DoubleAnimation Storyboard.TargetName="SpinnerRotate"
+                             Storyboard.TargetProperty="Angle"
+                             From="0" To="360" Duration="0:0:1" />
+        </Storyboard>
+
+        <Style x:Key="SyncItemContainerStyle" TargetType="ListBoxItem">
+            <Setter Property="Background" Value="{StaticResource BaseWhite}"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#E5E7EB"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border Background="{TemplateBinding Background}" 
+                                BorderBrush="{TemplateBinding BorderBrush}" 
+                                BorderThickness="{TemplateBinding BorderThickness}" 
+                                CornerRadius="6">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="BorderBrush" Value="{StaticResource PrimaryTeal}"/>
+                                <Setter Property="Background" Value="#F0FDFA"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="BorderBrush" Value="{StaticResource PrimaryTeal}"/>
+                                <Setter Property="Background" Value="#CCFBF1"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Page.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Back Navigation -->
+        <Button Content="← Back" Click="Back_Click" 
+                Style="{StaticResource SidebarButtonStyle}" Foreground="{StaticResource PrimaryTeal}" 
+                HorizontalAlignment="Left" Height="32" Margin="0,0,0,6" FontSize="13"/>
+
+        <!-- Header -->
+        <TextBlock Grid.Row="1" Text="Sync Configuration"
+                   FontSize="24" FontWeight="SemiBold"
+                   Foreground="{StaticResource PrimaryTeal}" Margin="0,0,0,5" />
+                   
+        <TextBlock Grid.Row="2" 
+                   Text="Map your database collections to Tally data modules and configure sync direction."
+                   FontSize="14" Foreground="{StaticResource CharcoalText}" Opacity="0.7" Margin="0,0,0,15" />
+
+        <!-- Status Bar + Sync Direction -->
+        <Grid Grid.Row="3" Margin="0,0,0,15">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Tally Status -->
+            <Border Background="{StaticResource BaseWhite}" CornerRadius="8" Padding="12,8" 
+                    BorderBrush="#E5E7EB" BorderThickness="1">
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse x:Name="TallyDot" Width="10" Height="10" Fill="#EF4444" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock x:Name="StatusLabel" Text="{Binding StatusMessage}" FontSize="13" VerticalAlignment="Center" Foreground="{StaticResource CharcoalText}" Margin="0,0,20,0"/>
+                    
+                    <Rectangle Width="1" Height="20" Fill="#E5E7EB" Margin="0,0,20,0"/>
+                    
+                    <TextBlock Text="Company:" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{StaticResource CharcoalText}" Margin="0,0,8,0"/>
+                    <ComboBox x:Name="CompanyCombo" ItemsSource="{Binding Companies}" SelectedItem="{Binding SelectedCompany}" 
+                              Width="220" FontSize="13" VerticalAlignment="Center" 
+                              Foreground="{StaticResource PrimaryTeal}" FontWeight="Bold"
+                              ui:ControlHelper.PlaceholderText="Select Company"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Sync Direction Picker -->
+            <Border Grid.Column="1" Background="{StaticResource BaseWhite}" CornerRadius="8" Padding="12,8" 
+                    BorderBrush="#E5E7EB" BorderThickness="1" Margin="12,0,0,0">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Sync:" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{StaticResource CharcoalText}"/>
+                    <ComboBox x:Name="SyncDirectionBox" Width="200" SelectedIndex="0" FontSize="13">
+                        <ComboBoxItem Content="Tally → Database (One-Way)"/>
+                        <ComboBoxItem Content="Database → Tally (One-Way)"/>
+                        <ComboBoxItem Content="Tally ↔ Database (Two-Way)"/>
+                    </ComboBox>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Main Content: Two Panels Side by Side -->
+        <Grid Grid.Row="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="60"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- LEFT: Database Collections Panel -->
+            <Border Background="{StaticResource BaseWhite}" CornerRadius="10" Padding="16" 
+                    BorderBrush="#E5E7EB" BorderThickness="1"
+                    Effect="{StaticResource CardShadow}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="📁" FontSize="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="DbPanelHeader" Text="Database Collections" FontWeight="Bold" FontSize="15" Foreground="{StaticResource PrimaryTeal}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="Load" Click="LoadDbCollections_Click" 
+                                Style="{StaticResource SidebarButtonStyle}" Foreground="{StaticResource PrimaryTeal}" 
+                                Padding="8,2" Height="28"/>
+                    </Grid>
+
+                    <ui:AutoSuggestBox Grid.Row="1" x:Name="DbSearchBox" PlaceholderText="Search collections..." 
+                                     TextChanged="DbSearchBox_TextChanged" Margin="0,0,0,10"
+                                     QueryIcon="Find"/>
+
+                    <!-- Loading Spinner -->
+                    <StackPanel Grid.Row="2" x:Name="DbLoadingPanel" Visibility="Collapsed"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Grid Width="32" Height="32" Margin="0,0,0,8">
+                            <Ellipse Width="32" Height="32" Stroke="#D1FAE5" StrokeThickness="3"/>
+                            <Ellipse Width="32" Height="32" Stroke="{StaticResource PrimaryTeal}" StrokeThickness="3"
+                                     StrokeDashArray="2,4" RenderTransformOrigin="0.5,0.5">
+                                <Ellipse.RenderTransform>
+                                    <RotateTransform x:Name="DbSpinnerRotate" Angle="0"/>
+                                </Ellipse.RenderTransform>
+                            </Ellipse>
+                        </Grid>
+                        <TextBlock Text="Loading collections..." FontSize="12" Foreground="{StaticResource PrimaryTeal}" HorizontalAlignment="Center"/>
+                    </StackPanel>
+
+                    <ListBox Grid.Row="2" x:Name="DbCollectionsListBox"
+                             Background="Transparent" BorderThickness="0"
+                             SelectionMode="Multiple"
+                             ItemContainerStyle="{StaticResource SyncItemContainerStyle}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+                </Grid>
+            </Border>
+
+            <!-- CENTER: Arrow Indicator -->
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock x:Name="SyncArrow" Text="→" FontSize="28" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}" HorizontalAlignment="Center"/>
+                <TextBlock x:Name="SyncLabel" Text="Sync" FontSize="11" Foreground="{StaticResource PrimaryTeal}" HorizontalAlignment="Center" Opacity="0.7"/>
+            </StackPanel>
+
+            <!-- RIGHT: Tally Collections Panel -->
+            <Border Grid.Column="2" Background="{StaticResource BaseWhite}" CornerRadius="10" Padding="16" 
+                    BorderBrush="#E5E7EB" BorderThickness="1"
+                    Effect="{StaticResource CardShadow}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="📊" FontSize="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Text="Tally Collections" FontWeight="Bold" FontSize="15" Foreground="{StaticResource PrimaryTeal}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <CheckBox x:Name="SelectAllTallyCheckBox" Content="Select All" 
+                                     VerticalAlignment="Center" Margin="0,0,15,0"
+                                     Checked="SelectAllTally_Checked" Unchecked="SelectAllTally_Unchecked"/>
+                            <Button Content="Refresh" Click="Refresh_Click" 
+                                    Style="{StaticResource SidebarButtonStyle}" Foreground="{StaticResource PrimaryTeal}" 
+                                    Padding="8,2" Height="28"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <ui:AutoSuggestBox Grid.Row="1" x:Name="TallySearchBox" PlaceholderText="Search tally data..." 
+                                     TextChanged="TallySearchBox_TextChanged" Margin="0,0,0,10"
+                                     QueryIcon="Find"/>
+
+                    <!-- Loading Spinner -->
+                    <StackPanel Grid.Row="2" x:Name="TallyLoadingPanel" Visibility="Collapsed"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Grid Width="32" Height="32" Margin="0,0,0,8">
+                            <Ellipse Width="32" Height="32" Stroke="#D1FAE5" StrokeThickness="3"/>
+                            <Ellipse Width="32" Height="32" Stroke="{StaticResource PrimaryTeal}" StrokeThickness="3"
+                                     StrokeDashArray="2,4" RenderTransformOrigin="0.5,0.5">
+                                <Ellipse.RenderTransform>
+                                    <RotateTransform x:Name="SpinnerRotate" Angle="0"/>
+                                </Ellipse.RenderTransform>
+                            </Ellipse>
+                        </Grid>
+                        <TextBlock Text="Loading from Tally..." FontSize="12" Foreground="{StaticResource PrimaryTeal}" HorizontalAlignment="Center"/>
+                    </StackPanel>
+
+                    <ListBox Grid.Row="2" x:Name="TallyFieldsListBox"
+                             Background="Transparent" BorderThickness="0"
+                             ItemsSource="{Binding TallyFields}"
+                             SelectionMode="Multiple"
+                             ItemContainerStyle="{StaticResource SyncItemContainerStyle}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" 
+                                              VerticalAlignment="Center" Margin="0,0,10,0" 
+                                              Foreground="{StaticResource PrimaryTeal}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Name}" 
+                                               FontSize="13" FontWeight="SemiBold" 
+                                               VerticalAlignment="Center" Foreground="{StaticResource CharcoalText}"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding SequenceNumber}" 
+                                               FontSize="12" FontWeight="Bold" VerticalAlignment="Center"
+                                               Foreground="{StaticResource PrimaryTeal}" Width="20" TextAlignment="Right"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Bottom Buttons -->
+        <Grid Grid.Row="5" Margin="0,16,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <Button Content="Preview Fields" Click="PreviewFields_Click" Width="130" Height="40" 
+                    Style="{StaticResource SidebarButtonStyle}" Foreground="{StaticResource PrimaryTeal}"/>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <Button Content="Cancel" Click="Back_Click" Width="100" Height="40" 
+                        Style="{StaticResource SidebarButtonStyle}" Margin="0,0,12,0"/>
+                <Button Content="Initialize Sync" Click="Next_Click" Width="160" Height="40" 
+                        Style="{StaticResource PrimaryButtonStyle}"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Page>

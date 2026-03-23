@@ -1,0 +1,61 @@
+<Page x:Class="Acczite20.Views.Pages.InventoryExplorerPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.modernwpf.com/2019"
+      Title="Inventory Explorer"
+      Background="{StaticResource LightTealBg}">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <TextBlock Text="Inventory Explorer" FontSize="28" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}" Margin="0,0,0,10"/>
+        
+        <!-- Search & Filter -->
+        <Border Grid.Row="1" Background="{StaticResource BaseWhite}" CornerRadius="10" Padding="15" Margin="0,10,0,20" Effect="{StaticResource CardShadow}">
+            <StackPanel Orientation="Horizontal">
+                <TextBox x:Name="SearchBox" ui:ControlHelper.PlaceholderText="Search items..." Width="300" Margin="0,0,10,0" KeyUp="SearchBox_KeyUp"/>
+                <ComboBox x:Name="GroupFilter" ui:ControlHelper.Header="Stock Group" Width="200" Margin="0,0,10,0" SelectionChanged="Filter_SelectionChanged"/>
+                <Button Content="Refresh" Click="Refresh_Click" Style="{StaticResource SidebarButtonStyle}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Data Grid -->
+        <Border Grid.Row="2" Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="20" Effect="{StaticResource CardShadow}">
+            <Grid>
+                <ui:ProgressRing x:Name="LoadingRing" IsActive="True" Visibility="Collapsed" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                <DataGrid x:Name="InventoryGrid" AutoGenerateColumns="False" IsReadOnly="True" 
+                          Background="Transparent" BorderThickness="0" GridLinesVisibility="Horizontal"
+                          HeadersVisibility="Column" SelectionUnit="FullRow">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Item Name" Binding="{Binding Name}" Width="2*"/>
+                        <DataGridTextColumn Header="Stock Group" Binding="{Binding StockGroup}" Width="*"/>
+                        <DataGridTextColumn Header="Unit" Binding="{Binding BaseUnit}" Width="Auto"/>
+                        <DataGridTextColumn Header="Opening" Binding="{Binding OpeningBalance, StringFormat=\{0:N2\}}" Width="Auto">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="HorizontalAlignment" Value="Right"/>
+                                    <Setter Property="Margin" Value="0,0,10,0"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="Closing Stock" Binding="{Binding ClosingBalance, StringFormat=\{0:N2\}}" Width="Auto">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="HorizontalAlignment" Value="Right"/>
+                                    <Setter Property="Margin" Value="0,0,10,0"/>
+                                    <Setter Property="FontWeight" Value="Bold"/>
+                                    <Setter Property="Foreground" Value="{StaticResource PrimaryTeal}"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Border>
+    </Grid>
+</Page>

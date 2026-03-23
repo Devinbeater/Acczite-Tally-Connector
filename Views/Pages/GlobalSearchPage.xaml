@@ -1,0 +1,58 @@
+<Page x:Class="Acczite20.Views.Pages.GlobalSearchPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.modernwpf.com/2019"
+      Title="Global Enterprise Search" Background="Transparent">
+
+    <Grid Margin="30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="Global Enterprise Search" FontSize="28" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}"/>
+            <TextBlock Text="Search across Accounting, Inventory, HR, and Cloud Operations" FontSize="14" Opacity="0.7"/>
+        </StackPanel>
+
+        <!-- Search Input -->
+        <Grid Grid.Row="1" Margin="0,0,0,30">
+            <TextBox x:Name="SearchBox" 
+                     ui:ControlHelper.PlaceholderText="Search for customers, products, vouchers, or employees..." 
+                     FontSize="16" Padding="12,12,40,12" 
+                     TextChanged="SearchBox_TextChanged"/>
+            <ui:FontIcon Glyph="&#xE721;" HorizontalAlignment="Right" Margin="0,0,16,0" Foreground="{StaticResource PrimaryTeal}"/>
+        </Grid>
+
+        <!-- Loading -->
+        <ui:ProgressRing x:Name="SearchProgress" Grid.Row="2" IsActive="False" Visibility="Collapsed" Width="40" Height="40" Foreground="{StaticResource PrimaryTeal}"/>
+
+        <!-- Results -->
+        <ListView x:Name="ResultsList" Grid.Row="2" Background="Transparent" SelectionMode="Single" SelectionChanged="ResultsList_SelectionChanged">
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Border Background="{StaticResource BaseWhite}" CornerRadius="8" Padding="16" Margin="0,0,0,12" Effect="{StaticResource CardShadow}" Width="800" HorizontalAlignment="Left">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <StackPanel>
+                                <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="Bold" Foreground="{StaticResource CharcoalText}"/>
+                                <TextBlock Text="{Binding SubTitle}" FontSize="13" Foreground="#6B7280" Margin="0,4,0,0"/>
+                            </StackPanel>
+
+                            <Border Grid.Column="1" Background="#E0F2FE" CornerRadius="4" Padding="8,4" VerticalAlignment="Top">
+                                <TextBlock Text="{Binding Category}" FontSize="12" FontWeight="SemiBold" Foreground="#0284C7"/>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+    </Grid>
+</Page>

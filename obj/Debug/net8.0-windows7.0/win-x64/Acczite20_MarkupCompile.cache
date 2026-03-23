@@ -1,0 +1,20 @@
+﻿Acczite20
+
+
+winexe
+C#
+.cs
+C:\Users\OM WAGH\source\repos\Acczite20\obj\Debug\net8.0-windows7.0\win-x64\
+Acczite20
+none
+false
+TRACE;DEBUG;NET;NET8_0;NETCOREAPP;WINDOWS;WINDOWS7_0;NET5_0_OR_GREATER;NET6_0_OR_GREATER;NET7_0_OR_GREATER;NET8_0_OR_GREATER;NETCOREAPP3_0_OR_GREATER;NETCOREAPP3_1_OR_GREATER;WINDOWS7_0_OR_GREATER
+C:\Users\OM WAGH\source\repos\Acczite20\App.xaml
+40-593913694
+
+1651847967538
+281-637943987
+Views\DatabaseConnectionWindow.xaml;Views\DatabaseTypeWindow.xaml;Views\LicenseWindow.xaml;Views\LoginWindow.xaml;Views\MainWindow.xaml;Views\Pages\AdminInventoryPage.xaml;Views\Pages\AnomalyDetectionPage.xaml;Views\Pages\BalanceSheetPage.xaml;Views\Pages\ComparativePandLPage.xaml;Views\Pages\DashboardPage.xaml;Views\Pages\DatabaseConnectionPage.xaml;Views\Pages\DatabaseTypePage.xaml;Views\Pages\ExecutiveDashboardPage.xaml;Views\Pages\GlobalSearchPage.xaml;Views\Pages\GstReportingPage.xaml;Views\Pages\HomePage.xaml;Views\Pages\HrManagementPage.xaml;Views\Pages\InventoryExplorerPage.xaml;Views\Pages\LedgerExplorerPage.xaml;Views\Pages\LoginPage.xaml;Views\Pages\LogsPage.xaml;Views\Pages\MainPage.xaml;Views\Pages\MappingReviewPage.xaml;Views\Pages\ProfilePage.xaml;Views\Pages\ProfitAndLossPage.xaml;Views\Pages\RegisterPage.xaml;Views\Pages\ReportsPage.xaml;Views\Pages\RiskMonitorPage.xaml;Views\Pages\SettingsPage.xaml;Views\Pages\SubscriptionPage.xaml;Views\Pages\SyncMonitorPage.xaml;Views\Pages\TableSelectionPage.xaml;Views\Pages\TallyExecutePage.xaml;Views\Pages\TallySyncPage.xaml;Views\Pages\TimelinePage.xaml;Views\Pages\TrialBalancePage.xaml;Views\Pages\UnifiedSyncPage.xaml;Views\Pages\VoucherExplorerPage.xaml;Views\StartupWindow.xaml;Views\TallySyncCompleteDialog.xaml;
+
+False
+

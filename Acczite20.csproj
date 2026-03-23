@@ -1,0 +1,116 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net8.0-windows7.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<UseWPF>true</UseWPF>
+		<EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+		<EnableDefaultPageItems>true</EnableDefaultPageItems>
+		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+
+		<!-- ✅ ClickOnce Publish Settings -->
+		<PublishDir>bin\Release\net8.0-windows\win-x64\app.publish\</PublishDir>
+		<PublishUrl>bin\publish\</PublishUrl>
+		<Install>true</Install>
+		<InstallFrom>Web</InstallFrom>
+		<InstallUrl>https://acczite.bizunite.in/dashboard/</InstallUrl>
+		<IsWebBootstrapper>true</IsWebBootstrapper>
+		<CreateWebPageOnPublish>true</CreateWebPageOnPublish>
+		<OpenBrowserOnPublish>false</OpenBrowserOnPublish>
+		<UpdateEnabled>true</UpdateEnabled>
+		<UpdateMode>Foreground</UpdateMode>
+		<UpdateRequired>false</UpdateRequired>
+		<WebPageFileName>Publish.html</WebPageFileName>
+		<ApplicationVersion>1.0.0.*</ApplicationVersion>
+		<ApplicationRevision>2</ApplicationRevision>
+		<IsRevisionIncremented>true</IsRevisionIncremented>
+		<BootstrapperEnabled>true</BootstrapperEnabled>
+		<PublishProtocol>ClickOnce</PublishProtocol>
+		<PublishReadyToRun>false</PublishReadyToRun>
+		<PublishSingleFile>false</PublishSingleFile>
+		<SelfContained>false</SelfContained>
+		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+
+		<!-- ✅ Ensures app auto-launches after install -->
+		<LaunchApplicationAfterInstall>true</LaunchApplicationAfterInstall>
+		<Configurations>Debug;Release;x64</Configurations>
+		<Platforms>AnyCPU;x64;ARM32;ARM64</Platforms>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="BCrypt.Net-Next" Version="4.1.0" />
+		<PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.0-rc5.4" />
+		<PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.2" />
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.13" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.13" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.13" />
+		<PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.7" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.7" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.7" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.2" />
+		<PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.7" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.7" />
+		<PackageReference Include="ModernWpfUI" Version="0.9.6" />
+		<PackageReference Include="MongoDB.Driver" Version="3.7.0" />
+
+		<PackageReference Include="MySqlConnector" Version="2.4.0" />
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+
+		<PackageReference Include="OpenTK.Windowing.Desktop" Version="4.8.3" />
+		<PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.3" />
+		<PackageReference Include="System.Data.Odbc" Version="10.0.3" />
+		<PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.135" />
+		<PackageReference Include="SkiaSharp.Views.WPF" Version="3.116.1" />
+		<PackageReference Include="ControlzEx" Version="4.1.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Update="appsettings.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+		<None Update="dbconfig.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="tallyconfig.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
+	<!-- Exclude legacy files -->
+	<ItemGroup>
+		<Compile Remove="Acczite3.0\**\*.cs" />
+		<Compile Remove="check_dead_letters.cs" />
+		<Compile Remove="check_mongo.cs" />
+		<Compile Remove="checkTally.cs" />
+		<Compile Remove="local_check.cs" />
+		<Compile Remove="mongo_probe.cs" />
+		<Compile Remove="Services\Sync\TallyMasterSyncService_cleaned.cs" />
+		<Compile Remove="Services\Sync\TallyMasterSyncService_fixed.cs" />
+		<Page Remove="Acczite3.0\**\*.xaml" />
+		<None Remove="Acczite3.0\**\*" />
+		<EmbeddedResource Remove="Acczite3.0\**\*" />
+	</ItemGroup>
+
+	<!-- Optional: WiX project link (ignored during build) -->
+	
+
+	<!-- ✅ Include both x64 and arm64 bootstrapper prerequisites -->
+	<ItemGroup>
+		<BootstrapperPackage Include="Microsoft.NetCore.DesktopRuntime.8.0.x64">
+			<Install>true</Install>
+			<ProductName>.NET Desktop Runtime 8.0.21 (x64)</ProductName>
+		</BootstrapperPackage>
+		<BootstrapperPackage Include="Microsoft.NetCore.DesktopRuntime.8.0.arm64">
+			<Install>true</Install>
+			<ProductName>.NET Desktop Runtime 8.0.21 (Arm64)</ProductName>
+		</BootstrapperPackage>
+	</ItemGroup>
+	<ItemGroup>
+	  <Folder Include="Properties\PublishProfiles\" />
+	</ItemGroup>
+
+</Project>

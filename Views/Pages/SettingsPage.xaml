@@ -1,0 +1,171 @@
+<Page x:Class="Acczite20.Views.Pages.SettingsPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      xmlns:vm="clr-namespace:Acczite20.ViewModels"
+      xmlns:ui="http://schemas.modernwpf.com/2019"
+      mc:Ignorable="d"
+      Title="Application Settings"
+      Background="{StaticResource LightTealBg}"
+      ui:ThemeManager.RequestedTheme="Light">
+
+    <Page.DataContext>
+        <vm:SettingsViewModel />
+    </Page.DataContext>
+
+    <Grid Margin="30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        
+        <!-- Back Navigation -->
+        <Button Content="← Back" Click="Back_Click" 
+                Style="{StaticResource SidebarButtonStyle}" Foreground="{StaticResource PrimaryTeal}" 
+                HorizontalAlignment="Left" Height="32" Margin="0,0,0,6" FontSize="13"/>
+
+        <!-- Header -->
+        <TextBlock Grid.Row="1" Text="Settings &amp; Configuration"
+                   FontSize="24" FontWeight="SemiBold"
+                   Foreground="{StaticResource PrimaryTeal}" Margin="0,0,0,5" />
+                   
+        <TextBlock Grid.Row="2" 
+                   Text="Manage your Tally connection, sync preferences, and system behavior."
+                   FontSize="14"
+                   Foreground="{StaticResource CharcoalText}"
+                   Opacity="0.7"
+                   Margin="0,0,0,25" />
+
+        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+
+                <!-- ═══════════════════════════════════════════ -->
+                <!-- CARD 1: TALLY CONNECTION                    -->
+                <!-- ═══════════════════════════════════════════ -->
+                <Border Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="30" 
+                        BorderBrush="#E5E7EB" BorderThickness="1"
+                        Effect="{StaticResource CardShadow}"
+                        HorizontalAlignment="Left" Width="620" Margin="0,0,0,20">
+                    <StackPanel>
+                        <TextBlock Text="Tally ERP Connection" FontWeight="Bold" FontSize="16" Foreground="{StaticResource PrimaryTeal}" Margin="0,0,0,15"/>
+
+                        <Grid Margin="0,0,0,15">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="20"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel>
+                                <TextBlock Text="XML API Port" Margin="0,0,0,5" Foreground="{StaticResource CharcoalText}" FontWeight="SemiBold"/>
+                                <TextBox x:Name="XmlPortBox" Text="9000" Width="240" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="ODBC Port" Margin="0,0,0,5" Foreground="{StaticResource CharcoalText}" FontWeight="SemiBold"/>
+                                <TextBox x:Name="OdbcPortBox" Text="9000" Width="240" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Status Row -->
+                        <Grid Margin="0,5,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse x:Name="TallyStatusDot" Width="12" Height="12" Fill="#EF4444" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock x:Name="TallyStatusText" Text="Tally Not Detected" FontSize="13" VerticalAlignment="Center" Foreground="{StaticResource CharcoalText}" FontWeight="SemiBold"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                <Button Content="Test XML" Click="TestTallyXml_Click" Style="{StaticResource SidebarButtonStyle}" Foreground="{StaticResource PrimaryTeal}" Margin="0,0,10,0" Width="90"/>
+                                <Button Content="Test ODBC" Click="TestTallyOdbc_Click" Style="{StaticResource SidebarButtonStyle}" Foreground="{StaticResource PrimaryTeal}" Width="100"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Available Companies from Tally -->
+                        <StackPanel x:Name="TallyCompaniesPanel" Visibility="Collapsed" Margin="0,10,0,0">
+                            <TextBlock Text="Detected Tally Companies" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource PrimaryTeal}" Margin="0,0,0,5"/>
+                            <Border Background="#F9FAFB" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="6" Height="80">
+                                <ListBox x:Name="TallyCompaniesListBox" SelectionChanged="TallyCompaniesListBox_SelectionChanged" Background="Transparent" BorderThickness="0" Margin="5"/>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- ═══════════════════════════════════════════ -->
+                <!-- CARD 2: DATABASE CONNECTION                  -->
+                <!-- ═══════════════════════════════════════════ -->
+                <Border Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="30" 
+                        BorderBrush="#E5E7EB" BorderThickness="1"
+                        Effect="{StaticResource CardShadow}"
+                        HorizontalAlignment="Left" Width="620" Margin="0,0,0,20">
+                    <StackPanel>
+                        <TextBlock Text="Database Configuration" FontWeight="Bold" FontSize="16" Foreground="{StaticResource PrimaryTeal}" Margin="0,0,0,15"/>
+                        
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Manage Sync Destination (SQL / MongoDB)" VerticalAlignment="Center" Foreground="{StaticResource CharcoalText}" Opacity="0.8"/>
+                            <Button Grid.Column="1" Content="Edit Connection" Click="EditConnection_Click" Style="{StaticResource SidebarButtonStyle}" Foreground="{StaticResource PrimaryTeal}"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- ═══════════════════════════════════════════ -->
+                <!-- CARD 3: DISPLAY / BEHAVIOR                   -->
+                <!-- ═══════════════════════════════════════════ -->
+                <Border Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="30" 
+                        BorderBrush="#E5E7EB" BorderThickness="1"
+                        Effect="{StaticResource CardShadow}"
+                        HorizontalAlignment="Left" Width="620" Margin="0,0,0,20">
+                    <StackPanel>
+                        <TextBlock Text="Display Settings" FontWeight="Bold" FontSize="16" Foreground="{StaticResource PrimaryTeal}" Margin="0,0,0,15"/>
+                        
+                        <Grid Margin="0,0,0,20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="200"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Active Theme:" VerticalAlignment="Center" Foreground="{StaticResource CharcoalText}" Opacity="0.8"/>
+                            <ComboBox Grid.Column="1" SelectedItem="{Binding SelectedTheme}" Width="200" HorizontalAlignment="Left">
+                                <ComboBoxItem Content="Light Theme (Default)"/>
+                                <ComboBoxItem Content="Dark Theme"/>
+                            </ComboBox>
+                        </Grid>
+
+                        <Separator Margin="0,0,0,15" Background="#E5E7EB"/>
+
+                        <TextBlock Text="Behavior" FontWeight="Bold" FontSize="16" Foreground="{StaticResource PrimaryTeal}" Margin="0,0,0,15"/>
+
+                        <CheckBox Content="Enable System Notifications for Errors" 
+                                  IsChecked="{Binding EnableNotifications}" 
+                                  Margin="0,0,0,15"
+                                  Foreground="{StaticResource CharcoalText}"/>
+
+                        <CheckBox Content="Launch automatically on Windows startup" 
+                                  IsChecked="{Binding AutoLaunch}" 
+                                  Margin="0,0,0,20"
+                                  Foreground="{StaticResource CharcoalText}"/>
+
+                        <Button Content="Save Configuration" 
+                                Command="{Binding SaveSettingsCommand}" 
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Width="180" 
+                                Height="40"
+                                HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

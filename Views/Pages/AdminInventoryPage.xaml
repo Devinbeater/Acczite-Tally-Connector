@@ -1,0 +1,74 @@
+<Page x:Class="Acczite20.Views.Pages.AdminInventoryPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+      xmlns:ui="http://schemas.modernwpf.com/2019"
+      mc:Ignorable="d" 
+      d:DesignHeight="700" d:DesignWidth="1100"
+      Title="Admin Inventory"
+      Background="{StaticResource LightTealBg}">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,24">
+            <TextBlock Text="Admin Inventory &amp; Products" FontSize="28" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}"/>
+            <TextBlock Text="View and manage products and inventory levels from the core system" FontSize="14" Opacity="0.7" Margin="0,4,0,0"/>
+        </StackPanel>
+
+        <TabControl Grid.Row="1" Background="White" Padding="16">
+            <TabItem Header="Stock Status">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    
+                    <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,16">
+                        <Button Content="Refresh" Click="RefreshInventory_Click" Style="{StaticResource DefaultButtonStyle}"/>
+                    </StackPanel>
+
+                    <DataGrid x:Name="InventoryGrid" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True" ItemsSource="{Binding InventoryRecords}">
+                        <DataGrid.Columns>
+                           <DataGridTextColumn Header="Product ID" Binding="{Binding ProductId}" Width="200"/>
+                           <DataGridTextColumn Header="Stock Label/Batch" Binding="{Binding Batch}" Width="150"/>
+                           <DataGridTextColumn Header="Quantity" Binding="{Binding AvailableStock, StringFormat=N2}" Width="100"/>
+                           <DataGridTextColumn Header="Cost Price" Binding="{Binding CostPrice, StringFormat=N2}" Width="120"/>
+                           <DataGridTextColumn Header="Last Updated" Binding="{Binding LastMovement, StringFormat={}{0:dd-MMM-yy HH:mm}}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Product Master">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,16">
+                        <Button Content="Refresh" Click="RefreshProducts_Click" Style="{StaticResource DefaultButtonStyle}"/>
+                    </StackPanel>
+
+                    <DataGrid x:Name="ProductGrid" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True" ItemsSource="{Binding ProductRecords}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="SKU" Binding="{Binding Sku}" Width="150"/>
+                            <DataGridTextColumn Header="Product Name" Binding="{Binding Name}" Width="250"/>
+                            <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="150"/>
+                            <DataGridTextColumn Header="UOM" Binding="{Binding Uom}" Width="80"/>
+                            <DataGridTextColumn Header="GST %" Binding="{Binding GstPercentage}" Width="80"/>
+                            <DataGridCheckBoxColumn Header="Active" Binding="{Binding IsActive}" Width="100"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <ui:ProgressRing x:Name="LoadingRing" Grid.Row="1" Width="50" Height="50" Visibility="Collapsed"/>
+    </Grid>
+</Page>

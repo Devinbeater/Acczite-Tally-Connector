@@ -1,0 +1,127 @@
+<Page x:Class="Acczite20.Views.Pages.TrialBalancePage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.modernwpf.com/2019"
+      Title="Trial Balance" Background="Transparent">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="{StaticResource BaseWhite}" CornerRadius="8" Padding="20" Margin="0,0,0,24" Effect="{StaticResource CardShadow}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Master Trial Balance" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource PrimaryTeal}"/>
+                    <TextBlock Text="Aggregated Account Hierarchy from Tally" Foreground="{StaticResource CharcoalText}" Opacity="0.7"/>
+                </StackPanel>
+
+                <!-- Totals Summary -->
+                <Border Grid.Column="1" Background="#F0FDF4" CornerRadius="6" Padding="16,8" Margin="0,0,16,0" BorderBrush="#BBF7D0" BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock Text="Total Debit" FontSize="11" FontWeight="Bold" Foreground="#166534" HorizontalAlignment="Right"/>
+                        <TextBlock Text="{Binding Report.TotalDebit, StringFormat={}{0:N2}}" FontSize="16" FontWeight="SemiBold" Foreground="#15803D" HorizontalAlignment="Right"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="2" Background="#FEF2F2" CornerRadius="6" Padding="16,8" Margin="0,0,16,0" BorderBrush="#FECACA" BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock Text="Total Credit" FontSize="11" FontWeight="Bold" Foreground="#991B1B" HorizontalAlignment="Right"/>
+                        <TextBlock Text="{Binding Report.TotalCredit, StringFormat={}{0:N2}}" FontSize="16" FontWeight="SemiBold" Foreground="#B91C1C" HorizontalAlignment="Right"/>
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Grid.Column="3" Margin="0,0,16,0" VerticalAlignment="Center">
+                    <TextBlock Text="As of Date" FontSize="12" Foreground="{StaticResource CharcoalText}"/>
+                    <DatePicker x:Name="AsOfDatePicker" Height="36" Width="140" SelectedDateChanged="AsOfDatePicker_SelectedDateChanged"/>
+                </StackPanel>
+
+                <!-- Balance Status Indicator -->
+                <Border Grid.Column="4" Background="{Binding StatusBackgroundBrush}" CornerRadius="6" Padding="12,8" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding StatusIcon}" Margin="0,0,8,0" VerticalAlignment="Center" FontSize="16"/>
+                        <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{Binding StatusTextBrush}"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Trial Balance Hierarchy Body -->
+        <Border Grid.Row="1" Background="{StaticResource BaseWhite}" CornerRadius="8" Effect="{StaticResource CardShadow}" ClipToBounds="True">
+            <DataGrid x:Name="TrialBalanceGrid" 
+                      ItemsSource="{Binding FlattenedRows}" 
+                      AutoGenerateColumns="False" 
+                      IsReadOnly="True"
+                      SelectionMode="Single"
+                      HeadersVisibility="Column"
+                      GridLinesVisibility="Horizontal"
+                      HorizontalGridLinesBrush="#E5E7EB"
+                      BorderThickness="0"
+                      Background="Transparent"
+                      RowHeight="36">
+                
+                <DataGrid.Resources>
+                    <Style TargetType="DataGridColumnHeader">
+                        <Setter Property="Background" Value="#F3F4F6"/>
+                        <Setter Property="Foreground" Value="#374151"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                        <Setter Property="Padding" Value="16,10"/>
+                        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                        <Setter Property="BorderBrush" Value="#E5E7EB"/>
+                    </Style>
+                    <Style TargetType="DataGridCell">
+                        <Setter Property="Padding" Value="16,0"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="{x:Type DataGridCell}">
+                                    <Border Padding="{TemplateBinding Padding}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Background="{TemplateBinding Background}" SnapsToDevicePixels="True">
+                                        <ContentPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                    <!-- Apply boldness to Group Rows -->
+                    <Style TargetType="DataGridRow">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsGroup}" Value="True">
+                                <Setter Property="FontWeight" Value="Bold"/>
+                                <Setter Property="Background" Value="#F9FAFB"/>
+                                <Setter Property="Foreground" Value="{StaticResource PrimaryTeal}"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.Resources>
+
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Particulars" Binding="{Binding Name}" Width="2*"/>
+                    <!-- Margin applied dynamically inside binding string if logic allows or via DataTrigger -->
+                    <DataGridTextColumn Header="Debit Balance" Binding="{Binding Debit, StringFormat={}{0:N2}}" Width="1*">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextAlignment" Value="Right"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="Credit Balance" Binding="{Binding Credit, StringFormat={}{0:N2}}" Width="1*">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextAlignment" Value="Right"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+    </Grid>
+</Page>

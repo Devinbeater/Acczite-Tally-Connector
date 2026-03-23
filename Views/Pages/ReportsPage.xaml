@@ -1,0 +1,158 @@
+<Page x:Class="Acczite20.Views.Pages.ReportsPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.modernwpf.com/2019"
+      Title="Reports"
+      Background="{StaticResource LightTealBg}">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Back Navigation -->
+        <Button Content="← Back" Click="Back_Click" 
+                Style="{StaticResource PrimaryButtonStyle}" 
+                HorizontalAlignment="Left" Height="32" Margin="0,0,0,6" FontSize="13" Padding="15,0"/>
+
+        <!-- Header -->
+        <TextBlock Grid.Row="1" Text="Reports &amp; Analytics"
+                   FontSize="24" FontWeight="SemiBold"
+                   Foreground="{StaticResource PrimaryTeal}" Margin="0,0,0,5" />
+        <TextBlock Grid.Row="2" 
+                   Text="Generate, view, and export detailed sync reports from your Tally data."
+                   FontSize="14" Foreground="{StaticResource CharcoalText}" Opacity="0.7" Margin="0,0,0,10" />
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,35,0,20">
+            <Button Content="📊 Variance Analysis (P&amp;L)" Click="Variance_Click" 
+                    Style="{StaticResource PrimaryButtonStyle}" Width="200" Height="40" Margin="0,0,10,0"/>
+            <Button Content="🔍 Smart Audit (Anomalies)" Click="Anomaly_Click" 
+                    Style="{StaticResource PrimaryButtonStyle}" Width="200" Height="40" Background="#115E59"/>
+        </StackPanel>
+
+        <!-- Filter Bar -->
+        <Border Grid.Row="3" Background="{StaticResource BaseWhite}" CornerRadius="8" Padding="16,10" 
+                BorderBrush="#E5E7EB" BorderThickness="1" Margin="0,0,0,20"
+                Effect="{StaticResource CardShadow}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                    <TextBlock Text="Report:" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox x:Name="ReportTypeBox" Width="180" SelectedIndex="0" FontSize="13">
+                        <ComboBoxItem Content="Sync History"/>
+                        <ComboBoxItem Content="Ledger Summary"/>
+                        <ComboBoxItem Content="Voucher Register"/>
+                        <ComboBoxItem Content="Error Log"/>
+                        <ComboBoxItem Content="Collection Overview"/>
+                    </ComboBox>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,16,0">
+                    <TextBlock Text="From:" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <DatePicker x:Name="FromDatePicker" Width="140" FontSize="13"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,16,0">
+                    <TextBlock Text="To:" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <DatePicker x:Name="ToDatePicker" Width="140" FontSize="13"/>
+                </StackPanel>
+
+                <Button Grid.Column="4" Content="Generate" Click="GenerateReport_Click" 
+                        Style="{StaticResource PrimaryButtonStyle}" Width="100" Height="34" Margin="0,0,8,0"/>
+                <Button Grid.Column="5" Content="📥 Export CSV" Click="ExportCsv_Click" 
+                        Style="{StaticResource PrimaryButtonStyle}" Height="34" Width="110"/>
+            </Grid>
+        </Border>
+
+        <!-- Report Data Grid -->
+        <Border Grid.Row="4" Background="{StaticResource BaseWhite}" CornerRadius="10" Padding="0" 
+                BorderBrush="#E5E7EB" BorderThickness="1"
+                Effect="{StaticResource CardShadow}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Report Summary Stats -->
+                <Border Background="#F0FDFA" Padding="16,10">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Total Records" FontSize="11" Foreground="#6B7280"/>
+                            <TextBlock x:Name="StatTotalRecords" Text="—" FontSize="18" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="Synced OK" FontSize="11" Foreground="#6B7280"/>
+                            <TextBlock x:Name="StatSyncedOk" Text="—" FontSize="18" FontWeight="Bold" Foreground="#22C55E"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="Errors" FontSize="11" Foreground="#6B7280"/>
+                            <TextBlock x:Name="StatErrors" Text="—" FontSize="18" FontWeight="Bold" Foreground="#EF4444"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="3">
+                            <TextBlock Text="Last Generated" FontSize="11" Foreground="#6B7280"/>
+                            <TextBlock x:Name="StatLastGenerated" Text="—" FontSize="18" FontWeight="Bold" Foreground="{StaticResource CharcoalText}"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- DataGrid -->
+                <DataGrid Grid.Row="1" x:Name="ReportDataGrid"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="True"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          GridLinesVisibility="Horizontal"
+                          HorizontalGridLinesBrush="#F3F4F6"
+                          RowHeight="38"
+                          HeadersVisibility="Column"
+                          CanUserSortColumns="True"
+                          Margin="8">
+                    <DataGrid.ColumnHeaderStyle>
+                        <Style TargetType="DataGridColumnHeader">
+                            <Setter Property="Background" Value="#F9FAFB"/>
+                            <Setter Property="Foreground" Value="{StaticResource CharcoalText}"/>
+                            <Setter Property="FontWeight" Value="SemiBold"/>
+                            <Setter Property="FontSize" Value="13"/>
+                            <Setter Property="Padding" Value="10,8"/>
+                            <Setter Property="BorderBrush" Value="#E5E7EB"/>
+                            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                        </Style>
+                    </DataGrid.ColumnHeaderStyle>
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Timestamp" Binding="{Binding Timestamp}" Width="160"/>
+                        <DataGridTextColumn Header="Collection" Binding="{Binding Collection}" Width="150"/>
+                        <DataGridTextColumn Header="Records" Binding="{Binding RecordCount}" Width="80"/>
+                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100"/>
+                        <DataGridTextColumn Header="Direction" Binding="{Binding Direction}" Width="120"/>
+                        <DataGridTextColumn Header="Details" Binding="{Binding Details}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <!-- Footer -->
+                <Border Grid.Row="2" Background="#F9FAFB" Padding="16,8" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0">
+                    <TextBlock x:Name="FooterLabel" Text="Generate a report to view data." FontSize="12" Foreground="#6B7280"/>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
+</Page>

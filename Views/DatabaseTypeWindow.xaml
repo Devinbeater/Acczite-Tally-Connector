@@ -1,0 +1,58 @@
+<Window x:Class="Acczite20.Views.DatabaseTypeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Select Database Type"
+        Height="360" Width="420"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        Background="#FFF9F9F9"
+        WindowStyle="SingleBorderWindow">
+
+	<Grid Margin="20">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+			<RowDefinition Height="Auto"/>
+		</Grid.RowDefinitions>
+
+		<!-- Title -->
+		<TextBlock Text="Select Database Type"
+                   FontSize="22"
+                   FontWeight="Bold"
+                   Foreground="#333"
+                   HorizontalAlignment="Center"
+                   Margin="0,0,0,20" />
+
+		<!-- Database Type Options -->
+		<GroupBox Header="Available Options"
+                  Grid.Row="1"
+                  FontWeight="SemiBold"
+                  Padding="15"
+                  BorderBrush="#CCC">
+			<UniformGrid Columns="1" Rows="4" Margin="10,5,10,5">
+				<RadioButton x:Name="SqlServerRadio" Content="SQL Server" FontSize="14" Padding="5"/>
+				<RadioButton x:Name="PostgreSqlRadio" Content="PostgreSQL" FontSize="14" Padding="5"/>
+				<RadioButton x:Name="SqliteRadio" Content="SQLite" FontSize="14" Padding="5"/>
+				<RadioButton x:Name="MySqlRadio" Content="MySQL (phpMyAdmin)" FontSize="14" Padding="5"/>
+			</UniformGrid>
+		</GroupBox>
+
+		<!-- Buttons -->
+		<StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,20,0,0">
+			<Button Content="Cancel"
+                    Width="80"
+                    Margin="0,0,10,0"
+                    Click="Cancel_Click"
+                    Background="#EEE"
+                    Foreground="Black"/>
+			<Button Content="Next"
+                    Width="80"
+                    Click="Next_Click"
+                    Background="#007ACC"
+                    Foreground="White"/>
+		</StackPanel>
+	</Grid>
+</Window>

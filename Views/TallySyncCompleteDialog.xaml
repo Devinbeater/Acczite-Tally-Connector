@@ -1,0 +1,40 @@
+<ui:ContentDialog x:Class="Acczite20.Views.TallySyncCompleteDialog"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:ui="http://schemas.modernwpf.com/2019"
+                  Title="Sync Complete"
+                  PrimaryButtonText="Done"
+                  DefaultButton="Primary">
+
+    <StackPanel Width="400" Margin="0,10,0,0">
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
+            <Border Background="#DCFCE7" CornerRadius="24" Width="48" Height="48" Margin="0,0,16,0">
+                <ui:SymbolIcon Symbol="Accept" Foreground="#166534" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="Synchronization Successful" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource PrimaryTeal}"/>
+                <TextBlock Text="Your Tally data is now up-to-date." FontSize="13" Foreground="{StaticResource GrayText}"/>
+            </StackPanel>
+        </StackPanel>
+
+        <Border Background="#F9FAFB" CornerRadius="12" Padding="20" BorderBrush="#E5E7EB" BorderThickness="1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="Total Synced" FontSize="11" Foreground="{StaticResource GrayText}" Opacity="0.8"/>
+                    <TextBlock x:Name="RecordsText" Text="0" FontSize="22" FontWeight="Bold" Foreground="{StaticResource CharcoalText}" Margin="0,4,0,0"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1">
+                    <TextBlock Text="Processing Rate" FontSize="11" Foreground="{StaticResource GrayText}" Opacity="0.8"/>
+                    <TextBlock x:Name="RateText" Text="0 /sec" FontSize="22" FontWeight="Bold" Foreground="{StaticResource CharcoalText}" Margin="0,4,0,0"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <TextBlock Text="Recent activities and error logs (if any) are available in the Sync Monitor page." 
+                   FontSize="12" Foreground="{StaticResource GrayText}" Margin="0,20,0,0" TextWrapping="Wrap"/>
+    </StackPanel>
+</ui:ContentDialog>

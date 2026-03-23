@@ -1,0 +1,117 @@
+<Window x:Class="Acczite20.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.modernwpf.com/2019"
+        Title="Acczite 2.0 - Enterprise Hub"
+        Height="768" Width="1366"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource LightTealBg}"
+        FontFamily="Segoe UI">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="SidebarColumn" Width="240"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Sidebar (Permanent) -->
+        <Border x:Name="SidebarPanel" Grid.Column="0" Background="{StaticResource BaseWhite}" BorderBrush="{StaticResource GoldMetallic}" BorderThickness="0,0,1,0">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="ACCZITE" 
+                               FontSize="22"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource PrimaryTeal}"
+                               Margin="24,32,24,40"/>
+
+                    <Button x:Name="NavPulseButton" Style="{StaticResource SidebarButtonStyle}" Content="📈 Business Pulse" Click="NavPulse_Click"/>
+                    <Button x:Name="NavDashboardButton" Style="{StaticResource SidebarButtonStyle}" Content="🔄 Sync Status" Click="NavDashboard_Click"/>
+                    
+                    <TextBlock Text="EXPLORE" Foreground="{StaticResource CharcoalText}" FontSize="12" FontWeight="Bold" Margin="24,20,0,10" Opacity="0.5"/>
+                    <Button x:Name="NavVoucherButton" Style="{StaticResource SidebarButtonStyle}" Content="🔍 Voucher Explorer" Click="NavVoucherExplorer_Click"/>
+                    <Button x:Name="NavLedgerButton" Style="{StaticResource SidebarButtonStyle}" Content="📔 Ledger Explorer" Click="NavLedgerExplorer_Click"/>
+                    <Button x:Name="NavTrialBalanceButton" Style="{StaticResource SidebarButtonStyle}" Content="⚖️ Trial Balance" Click="NavTrialBalance_Click"/>
+                    <Button x:Name="NavPandLButton" Style="{StaticResource SidebarButtonStyle}" Content="📈 Profit &amp; Loss" Click="NavPandL_Click"/>
+                    <Button x:Name="NavBalanceSheetButton" Style="{StaticResource SidebarButtonStyle}" Content="⚖️ Balance Sheet" Click="NavBalanceSheet_Click"/>
+                    <Button x:Name="NavInventoryButton" Style="{StaticResource SidebarButtonStyle}" Content="📦 Inventory Explorer" Click="NavInventory_Click"/>
+                    <Button x:Name="NavGstButton" Style="{StaticResource SidebarButtonStyle}" Content="🧾 GST Report" Click="NavGst_Click"/>
+                    
+                <TextBlock Text="SYSTEM" Foreground="{StaticResource CharcoalText}" FontSize="12" FontWeight="Bold" Margin="24,20,0,10" Opacity="0.5"/>
+                <Button x:Name="NavSyncButton" Style="{StaticResource SidebarButtonStyle}" Content="🔄 Enterprise Sync hub" Click="NavSync_Click"/>
+                <Button x:Name="NavTimelineButton" Style="{StaticResource SidebarButtonStyle}" Content="🌍 Global Timeline" Click="NavTimeline_Click"/>
+                <Button x:Name="NavRiskButton" Style="{StaticResource SidebarButtonStyle}" Content="🛡️ Customer Risk Monitor" Click="NavRisk_Click"/>
+                <Button x:Name="NavSyncMonitorButton" Style="{StaticResource SidebarButtonStyle}" Content="🏥 Sync Monitor" Click="NavSyncMonitor_Click"/>
+                
+                <!-- Nav item - Tools -->
+                <TextBlock Text="TOOLS" Foreground="{StaticResource CharcoalText}" FontSize="12" FontWeight="Bold" Margin="24,20,0,10" Opacity="0.5"/>
+                <Button x:Name="NavAttendanceButton" Content="🕒 Employee Attendance" Click="NavAttendance_Click" Style="{StaticResource SidebarButtonStyle}"/>
+                <Button x:Name="NavPayrollButton" Content="💰 Payroll" Click="NavPayroll_Click" Style="{StaticResource SidebarButtonStyle}"/>
+                <Button x:Name="NavReportsButton" Content="📊 Reports" Click="NavReports_Click" Style="{StaticResource SidebarButtonStyle}"/>
+                <Button x:Name="NavLogsButton" Content="📜 System Logs" Click="NavLogs_Click" Style="{StaticResource SidebarButtonStyle}"/>
+
+                <!-- Nav item - HR & Admin -->
+                <TextBlock Text="HR &amp; ADMIN" Foreground="{StaticResource CharcoalText}" FontSize="12" FontWeight="Bold" Margin="24,20,0,10" Opacity="0.5"/>
+                <Button x:Name="NavHrButton" Content="👥 HR Management" Click="NavHr_Click" Style="{StaticResource SidebarButtonStyle}"/>
+                <Button x:Name="NavAdminInventoryButton" Content="🏭 Admin Inventory" Click="NavAdminInventory_Click" Style="{StaticResource SidebarButtonStyle}"/>
+
+                <Separator Margin="0,15" Background="{StaticResource CharcoalText}" Opacity="0.2"/>
+                <Button x:Name="NavSettingsButton" Content="⚙ Settings" Click="NavSettings_Click" Style="{StaticResource SidebarButtonStyle}"/>
+                <Button Content="💎 Subscription" Click="NavSubscription_Click" Style="{StaticResource SidebarButtonStyle}"/>
+                <Button Content="🚪 Logout" Click="Logout_Click" Style="{StaticResource SidebarButtonStyle}" Foreground="Red" Margin="0,20,0,20"/>
+            </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Main Workspace -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition x:Name="HeaderRow" Height="64"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Top Header Bar -->
+            <Border x:Name="HeaderBar" Grid.Row="0" Background="{StaticResource LightTealBg}" BorderBrush="{StaticResource GoldMetallic}" BorderThickness="0,0,0,1" Padding="24,0">
+                <Grid>
+                    <TextBlock x:Name="ActivePageTitle" Text="Dashboard" VerticalAlignment="Center" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}"/>
+                    
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <!-- Search Button -->
+                        <Button x:Name="NavSearchButton" Width="40" Height="40" Margin="0,0,16,0" Style="{StaticResource SidebarButtonStyle}" Click="NavSearch_Click" ToolTip="Global Enterprise Search">
+                            <ui:FontIcon Glyph="&#xE721;" Foreground="{StaticResource PrimaryTeal}"/>
+                        </Button>
+
+                        <!-- Org Switcher -->
+                        <ComboBox x:Name="OrgSwitcher" 
+                                  Width="200" 
+                                  Margin="0,0,24,0"
+                                  SelectionChanged="OrgSwitcher_SelectionChanged"
+                                  ui:ControlHelper.PlaceholderText="Select Organization"/>
+
+                        <!-- Live Sync Status Badge -->
+                        <Border x:Name="SyncStatusBadge" Background="#D1FAE5" CornerRadius="6" Padding="12,8" Margin="0,0,24,0" MinWidth="220">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                <Ellipse x:Name="SyncIndicatorDot" Width="8" Height="8" Fill="#059669" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="SyncStatusText" Text="🟢 Synced" FontSize="12" FontWeight="SemiBold" Foreground="#065F46"/>
+                                </StackPanel>
+                                <ProgressBar x:Name="SyncHeaderProgress" Height="4" Margin="0,8,0,0"
+                                             Visibility="Collapsed" Minimum="0" Maximum="100"
+                                             Foreground="#0F766E" Background="#A7F3D0" BorderThickness="0"/>
+                            </StackPanel>
+                        </Border>
+                        
+                        <!-- License Info -->
+                        <TextBlock Text="License: Enterprise" VerticalAlignment="Center" FontSize="13" Foreground="{StaticResource CharcoalText}" Margin="0,0,24,0"/>
+                        
+                        <!-- Profile Icon -->
+                        <Border Width="36" Height="36" CornerRadius="18" Background="{StaticResource PrimaryTeal}" Cursor="Hand">
+                            <TextBlock Text="JS" Foreground="{StaticResource BaseWhite}" VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="SemiBold" FontSize="14"/>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Main Frame for Pages -->
+            <Frame x:Name="MainFrame" Grid.Row="1" NavigationUIVisibility="Hidden"/>
+        </Grid>
+    </Grid>
+</Window>

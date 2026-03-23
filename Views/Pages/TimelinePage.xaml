@@ -1,0 +1,162 @@
+<Page x:Class="Acczite20.Views.Pages.TimelinePage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.modernwpf.com/2019"
+      xmlns:converters="clr-namespace:Acczite20.Views.Converters"
+      Title="Unified Global Timeline" 
+      Background="{DynamicResource SystemControlPageBackgroundListLowBrush}">
+
+    <Page.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <converters:StringToVisibilityConverter x:Key="StringToVis"/>
+        
+        <!-- Style for the Timeline Dot -->
+        <Style x:Key="TimelineDotStyle" TargetType="Ellipse">
+            <Setter Property="Width" Value="12"/>
+            <Setter Property="Height" Value="12"/>
+            <Setter Property="Fill" Value="{DynamicResource SystemAccentColorBrush}"/>
+        </Style>
+
+        <!-- Color converter logic conceptually in description -->
+        <Style x:Key="SourceBadgeStyle" TargetType="Border">
+            <Setter Property="Padding" Value="8,2"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+        </Style>
+    </Page.Resources>
+
+    <Grid Margin="32">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,24">
+            <TextBlock Text="Unified Global Timeline" FontSize="28" FontWeight="Bold"/>
+            <TextBlock Text="A chronological audit trail of all cross-platform activities (Tally, Cloud, and Local)." 
+                       FontSize="14" Opacity="0.6"/>
+        </StackPanel>
+
+        <!-- Filters -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,20">
+            <Button Click="Refresh_Click" Margin="0,0,12,0">
+                <StackPanel Orientation="Horizontal">
+                    <ui:SymbolIcon Symbol="Refresh" Margin="0,0,8,0"/>
+                    <TextBlock Text="Refresh Timeline"/>
+                </StackPanel>
+            </Button>
+            
+            <ComboBox x:Name="SourceFilter" Width="150" ui:ControlHelper.PlaceholderText="All Sources" Margin="0,0,8,0">
+                <ComboBoxItem Content="All Sources"/>
+                <ComboBoxItem Content="Tally"/>
+                <ComboBoxItem Content="MERN"/>
+                <ComboBoxItem Content="WPF"/>
+            </ComboBox>
+
+            <ComboBox x:Name="TypeFilter" Width="150" ui:ControlHelper.PlaceholderText="All Events">
+                <ComboBoxItem Content="All Events"/>
+                <ComboBoxItem Content="Voucher"/>
+                <ComboBoxItem Content="Stock"/>
+                <ComboBoxItem Content="Employee"/>
+                <ComboBoxItem Content="Attendance"/>
+            </ComboBox>
+        </StackPanel>
+
+        <!-- Timeline Feed -->
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <ItemsControl x:Name="TimelineList">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="80"/>
+                                <ColumnDefinition Width="24"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Timestamp -->
+                            <StackPanel HorizontalAlignment="Right" Margin="0,4,12,0">
+                                <TextBlock Text="{Binding Timestamp, StringFormat=HH:mm}" FontWeight="SemiBold" FontSize="14" HorizontalAlignment="Right"/>
+                                <TextBlock Text="{Binding Timestamp, StringFormat=dd MMM}" FontSize="10" Opacity="0.5" HorizontalAlignment="Right"/>
+                            </StackPanel>
+
+                            <!-- Vertical Line and Dot -->
+                            <Grid Grid.Column="1">
+                                <Rectangle Width="2" Fill="{DynamicResource SystemControlForegroundBaseLowBrush}" 
+                                           HorizontalAlignment="Center" Margin="0,12,0,-16"/>
+                                <Ellipse Style="{StaticResource TimelineDotStyle}" VerticalAlignment="Top" Margin="0,6,0,0"/>
+                            </Grid>
+
+                            <!-- Content Card -->
+                            <Border Grid.Column="2" 
+                                    Background="{DynamicResource SystemControlBackgroundAltHighBrush}" 
+                                    CornerRadius="8" 
+                                    Padding="16" 
+                                    Margin="12,0,0,0"
+                                    Effect="{DynamicResource CardShadow}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="4"/> <!-- Severity Bar -->
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Rectangle Grid.Column="0" Width="4" Margin="-16,-16,12,-16" RadiusX="2" RadiusY="2">
+                                        <Rectangle.Style>
+                                            <Style TargetType="Rectangle">
+                                                <Setter Property="Fill" Value="Transparent"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Severity}" Value="Warning">
+                                                        <Setter Property="Fill" Value="#F59E0B"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Severity}" Value="Critical">
+                                                        <Setter Property="Fill" Value="#EF4444"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Severity}" Value="Info">
+                                                        <Setter Property="Fill" Value="#10B981"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Rectangle.Style>
+                                    </Rectangle>
+
+                                    <StackPanel Grid.Column="1">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                            <Border Style="{StaticResource SourceBadgeStyle}" 
+                                                    Background="#E3F2FD">
+                                                <TextBlock Text="{Binding SourceSystem}" FontSize="10" FontWeight="Bold" Foreground="#1976D2"/>
+                                            </Border>
+                                            <TextBlock Text="{Binding EventType}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        
+                                        <TextBlock Text="{Binding Description}" FontSize="14" TextWrapping="Wrap"/>
+                                        
+                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                            <TextBlock Text="{Binding EntityType}" 
+                                                       FontSize="11" 
+                                                       Opacity="0.4" 
+                                                       Margin="0,0,12,0"/>
+                                            
+                                            <TextBlock Text="{Binding CorrelationId, StringFormat='Workflow: {0}'}" 
+                                                       FontSize="11" 
+                                                       Opacity="0.3" 
+                                                       Visibility="{Binding CorrelationId, Converter={StaticResource StringToVis}, FallbackValue=Collapsed}"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <!-- Empty State -->
+        <StackPanel x:Name="EmptyState" Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="Collapsed">
+            <ui:SymbolIcon Symbol="Clock" Width="64" Height="64" Opacity="0.1"/>
+            <TextBlock Text="The timeline is currently quiet." FontSize="18" Opacity="0.4" Margin="0,16,0,0"/>
+            <TextBlock Text="Activities will appear here as they happen across platforms." FontSize="14" Opacity="0.2"/>
+        </StackPanel>
+    </Grid>
+</Page>

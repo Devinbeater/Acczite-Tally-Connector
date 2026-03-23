@@ -1,0 +1,101 @@
+<Page x:Class="Acczite20.Views.Pages.GstReportingPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.modernwpf.com/2019"
+      xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.WPF;assembly=LiveChartsCore.SkiaSharpView.WPF"
+      Title="GST Reporting"
+      Background="{StaticResource LightTealBg}">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="GST Health Report" FontSize="28" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <DatePicker x:Name="FromDatePicker" Width="120" Margin="0,0,10,0"/>
+                <DatePicker x:Name="ToDatePicker" Width="120" Margin="0,0,10,0"/>
+                <Button Content="Generate Report" Click="Generate_Click" Style="{StaticResource PrimaryButtonStyle}"/>
+            </StackPanel>
+        </DockPanel>
+
+        <!-- Summary Cards -->
+        <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,24">
+            <Border Background="{StaticResource BaseWhite}" CornerRadius="10" Padding="15" Margin="0,0,10,0" Effect="{StaticResource CardShadow}">
+                <StackPanel>
+                    <TextBlock Text="Total Taxable Value" FontSize="12" Foreground="#6B7280"/>
+                    <TextBlock x:Name="TxtTaxable" Text="₹ 0.00" FontSize="20" FontWeight="Bold" Foreground="{StaticResource CharcoalText}" Margin="0,5,0,0"/>
+                </StackPanel>
+            </Border>
+            <Border Background="{StaticResource BaseWhite}" CornerRadius="10" Padding="15" Margin="0,0,10,0" Effect="{StaticResource CardShadow}">
+                <StackPanel>
+                    <TextBlock Text="Output CGST" FontSize="12" Foreground="#6B7280"/>
+                    <TextBlock x:Name="TxtCgst" Text="₹ 0.00" FontSize="20" FontWeight="Bold" Foreground="#3B82F6" Margin="0,5,0,0"/>
+                </StackPanel>
+            </Border>
+            <Border Background="{StaticResource BaseWhite}" CornerRadius="10" Padding="15" Margin="0,0,10,0" Effect="{StaticResource CardShadow}">
+                <StackPanel>
+                    <TextBlock Text="Output SGST" FontSize="12" Foreground="#6B7280"/>
+                    <TextBlock x:Name="TxtSgst" Text="₹ 0.00" FontSize="20" FontWeight="Bold" Foreground="#8B5CF6" Margin="0,5,0,0"/>
+                </StackPanel>
+            </Border>
+            <Border Background="{StaticResource BaseWhite}" CornerRadius="10" Padding="15" Effect="{StaticResource CardShadow}">
+                <StackPanel>
+                    <TextBlock Text="Output IGST" FontSize="12" Foreground="#6B7280"/>
+                    <TextBlock x:Name="TxtIgst" Text="₹ 0.00" FontSize="20" FontWeight="Bold" Foreground="#F59E0B" Margin="0,5,0,0"/>
+                </StackPanel>
+            </Border>
+        </UniformGrid>
+
+        <!-- Main Content -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="350"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Rate-wise Summary Table -->
+            <Border Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="20" Margin="0,0,20,0" Effect="{StaticResource CardShadow}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="GST Rate-wise Summary" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource PrimaryTeal}" Margin="0,0,0,15"/>
+                    <DataGrid x:Name="GstGrid" AutoGenerateColumns="False" IsReadOnly="True" 
+                              Background="Transparent" BorderThickness="0" GridLinesVisibility="None"
+                              HeadersVisibility="Column">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Tax Rate (%)" Binding="{Binding TaxRate, StringFormat={}{0}%}" Width="*"/>
+                            <DataGridTextColumn Header="Taxable Value" Binding="{Binding TaxableValue, StringFormat=C, ConverterCulture=en-IN}" Width="*"/>
+                            <DataGridTextColumn Header="CGST" Binding="{Binding CgstAmount, StringFormat=C, ConverterCulture=en-IN}" Width="*"/>
+                            <DataGridTextColumn Header="SGST" Binding="{Binding SgstAmount, StringFormat=C, ConverterCulture=en-IN}" Width="*"/>
+                            <DataGridTextColumn Header="IGST" Binding="{Binding IgstAmount, StringFormat=C, ConverterCulture=en-IN}" Width="*"/>
+                            <DataGridTextColumn Header="Total Tax" Binding="{Binding TotalTax, StringFormat=C, ConverterCulture=en-IN}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
+
+            <!-- Charts -->
+            <StackPanel Grid.Column="1">
+                <Border Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="20" Margin="0,0,0,20" Effect="{StaticResource CardShadow}">
+                    <StackPanel>
+                        <TextBlock Text="Tax Distribution" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}" Margin="0,0,0,15"/>
+                        <Border Height="200">
+                            <lvc:PieChart x:Name="GstPieChart" LegendPosition="Bottom" />
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <Border Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="20" Effect="{StaticResource CardShadow}">
+                    <StackPanel>
+                        <TextBlock Text="Quick Actions" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}" Margin="0,0,0,15"/>
+                        <Button Content="Export to Excel" Click="ExportExcel_Click" Style="{StaticResource SidebarButtonStyle}" HorizontalAlignment="Stretch" Margin="0,0,0,10"/>
+                        <Button Content="Export to PDF" Click="ExportPdf_Click" Style="{StaticResource SidebarButtonStyle}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Page>

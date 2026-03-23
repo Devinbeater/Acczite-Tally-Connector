@@ -1,0 +1,86 @@
+<Page x:Class="Acczite20.Views.Pages.ComparativePandLPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.modernwpf.com/2019"
+      Title="Variance Analysis"
+      Background="{StaticResource LightTealBg}">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,20">
+            <StackPanel>
+                <TextBlock Text="Variance Analysis (P&amp;L)" FontSize="28" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}"/>
+                <TextBlock Text="Comparative performance across financial years" Foreground="{StaticResource GrayText}"/>
+            </StackPanel>
+            
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <TextBlock Text="Period 1 (Year):" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                <TextBox x:Name="TxtYear1" Width="60" Text="2024" Margin="0,0,15,0"/>
+                
+                <TextBlock Text="Period 2 (Year):" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                <TextBox x:Name="TxtYear2" Width="60" Text="2025" Margin="0,0,15,0"/>
+                
+                <Button Content="Analyze Variance" Click="Analyze_Click" Style="{StaticResource PrimaryButtonStyle}"/>
+            </StackPanel>
+        </DockPanel>
+
+        <!-- Variance Content -->
+        <Border Grid.Row="1" Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="10" Effect="{StaticResource CardShadow}">
+            <DataGrid x:Name="VarianceGrid" AutoGenerateColumns="False" IsReadOnly="True" 
+                      GridLinesVisibility="Horizontal" BorderThickness="0" Background="Transparent"
+                      RowHeight="40" SelectionMode="Single" MouseDoubleClick="VarianceGrid_MouseDoubleClick">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Ledger Name" Binding="{Binding LedgerName}" Width="*" />
+                    <DataGridTextColumn Header="Group" Binding="{Binding GroupName}" Width="150" />
+                    <DataGridTextColumn Header="FY 2024 (₹)" Binding="{Binding Period1Amount, StringFormat=N2}" Width="150" />
+                    <DataGridTextColumn Header="FY 2025 (₹)" Binding="{Binding Period2Amount, StringFormat=N2}" Width="150" />
+                    
+                    <DataGridTemplateColumn Header="Variance" Width="120">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding VarianceAmount, StringFormat=N2}" 
+                                           FontWeight="Bold"
+                                           VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{StaticResource CharcoalText}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding VarianceAmount, Converter={StaticResource CompConv}, ConverterParameter=IsNegative}" Value="True">
+                                                    <Setter Property="Foreground" Value="#EF4444"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTemplateColumn Header="Change %" Width="100">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border CornerRadius="4" Padding="5,2" HorizontalAlignment="Left" Background="#E5E7EB">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding VarianceAmount, Converter={StaticResource CompConv}, ConverterParameter=IsPositive}" Value="True">
+                                                    <Setter Property="Background" Value="#D1FAE5"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock Text="{Binding VariancePercentage, StringFormat={}{0:N1}%}" FontWeight="SemiBold"/>
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+    </Grid>
+</Page>

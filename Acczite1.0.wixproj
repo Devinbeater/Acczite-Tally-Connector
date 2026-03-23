@@ -1,0 +1,47 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">x86</Platform>
+    <ProductVersion>3.14</ProductVersion>
+    <ProjectGuid>{1DB42BDC-93B1-4A4E-AE82-C877C0D882A4}</ProjectGuid>
+    <SchemaVersion>2.0</SchemaVersion>
+    <OutputName>Acczite1.0</OutputName>
+    <OutputType>Package</OutputType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+    <IntermediateOutputPath>obj\$(Configuration)\</IntermediateOutputPath>
+    <DefineConstants>Debug</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+    <IntermediateOutputPath>obj\$(Configuration)\</IntermediateOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Product.wxs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="AppIcon.ico" />
+  </ItemGroup>
+
+  <!-- Explicitly set WiX bin folder if needed -->
+  <PropertyGroup>
+    <WixToolsetRoot Condition="'$(WixToolsetRoot)' == ''">C:\Program Files (x86)\WiX Toolset v3.14\bin</WixToolsetRoot>
+  </PropertyGroup>
+
+  <!-- Import WiX.targets if available, otherwise rely on VS WiX extension -->
+  <Import Project="$(WixToolsetRoot)\Wix.targets" Condition="Exists('$(WixToolsetRoot)\Wix.targets')" />
+
+  <!-- Fallback check in case WiX.targets is missing -->
+  <Target Name="EnsureWixToolsetInstalled" Condition="!Exists('$(WixToolsetRoot)\candle.exe')">
+    <Error Text="❌ WiX Toolset v3.14 not found or candle.exe missing at: $(WixToolsetRoot)
+Please verify WiX installation or adjust WixToolsetRoot in your .wixproj file." />
+  </Target>
+
+</Project>

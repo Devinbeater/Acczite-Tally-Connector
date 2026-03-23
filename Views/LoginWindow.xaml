@@ -1,0 +1,58 @@
+<!-- Example: ensure this XAML's x:Class is unique and matches its code-behind namespace -->
+<Window x:Class="Acczite20.Views.LoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="LoginWindow" Height="300" Width="400">
+    <Window.Resources>
+        <!-- Simple watermarked TextBox style. Supply the watermark text in the TextBox.Tag -->
+        <Style x:Key="WatermarkedTextBox" TargetType="TextBox">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Grid>
+                            <ScrollViewer x:Name="PART_ContentHost" />
+                            <TextBlock x:Name="Watermark"
+                                       Text="{TemplateBinding Tag}"
+                                       Foreground="Gray"
+                                       Margin="4,0,0,0"
+                                       VerticalAlignment="Center"
+                                       IsHitTestVisible="False"
+                                       Visibility="Collapsed" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <!-- Show watermark when Text is empty -->
+                            <Trigger Property="Text" Value="">
+                                <Setter TargetName="Watermark" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <!-- Hide watermark when focused or non-empty -->
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter TargetName="Watermark" Property="Visibility" Value="Collapsed"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Use Tag to provide the placeholder text and apply the WatermarkedTextBox style -->
+        <TextBox x:Name="EmailBox"
+                 Grid.Row="0"
+                 Margin="0,0,0,8"
+                 Tag="Email"
+                 Style="{StaticResource WatermarkedTextBox}" />
+
+        <!-- PasswordBox does not have a Text property. For a placeholder you need a separate template/overlay. -->
+        <PasswordBox x:Name="PasswordBox"
+                     Grid.Row="1"
+                     Margin="0,0,0,8" />
+        <!-- other UI elements go in Grid.Row="2" -->
+    </Grid>
+</Window>

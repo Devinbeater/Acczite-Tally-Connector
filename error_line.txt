@@ -1,0 +1,2 @@
+﻿C:\Users\OM WAGH\source\repos\Acczite20\tally_probe.cs(7,7): error CS0101: The namespace '<global namespace>' already contains a definition for 'Program' [C:\Users\OM WAGH\source\repos\Acczite20\Acczite20_ud4f5i10_wpftmp.csproj]
+C:\Users\OM WAGH\source\repos\Acczite20\tally_probe.cs(7,7): error CS0101: The namespace '<global namespace>' already contains a definition for 'Program' [C:\Users\OM WAGH\source\repos\Acczite20\Acczite20_ud4f5i10_wpftmp.csproj]

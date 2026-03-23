@@ -1,0 +1,75 @@
+<Page x:Class="Acczite20.Views.Pages.AnomalyDetectionPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.modernwpf.com/2019"
+      Title="Smart Anomaly Detection"
+      Background="{StaticResource LightTealBg}">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="Smart Audit &amp; Anomaly Detection" FontSize="28" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}"/>
+            <TextBlock Text="AI-driven scanning for suspicious transactions and spikes" Foreground="{StaticResource GrayText}"/>
+        </StackPanel>
+
+        <!-- Anomaly Feed -->
+        <ScrollViewer Grid.Row="1">
+            <ItemsControl x:Name="AnomalyList">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="20" Margin="0,0,0,15" Effect="{StaticResource CardShadow}">
+                            <DockPanel>
+                                <Border DockPanel.Dock="Left" Width="60" Height="60" CornerRadius="30" Margin="0,0,20,0">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="#FEE2E2"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Severity}" Value="High">
+                                                    <Setter Property="Background" Value="#FEE2E2"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Severity}" Value="Medium">
+                                                    <Setter Property="Background" Value="#FEF3C7"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <ui:SymbolIcon Symbol="Important" ui:SymbolIcon.Foreground="#EF4444">
+                                        <ui:SymbolIcon.Style>
+                                            <Style TargetType="ui:SymbolIcon">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Severity}" Value="Medium">
+                                                        <Setter Property="Foreground" Value="#D97706"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ui:SymbolIcon.Style>
+                                    </ui:SymbolIcon>
+                                </Border>
+
+                                <StackPanel>
+                                    <DockPanel>
+                                        <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="Bold" Foreground="{StaticResource CharcoalText}"/>
+                                        <Border Background="#F3F4F6" CornerRadius="4" Padding="8,2" Margin="15,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Severity}" FontSize="12" FontWeight="SemiBold"/>
+                                        </Border>
+                                        <TextBlock Text="{Binding DetectedAt, StringFormat=g}" Foreground="{StaticResource GrayText}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                    </DockPanel>
+                                    
+                                    <TextBlock Text="{Binding RelatedEntityName}" FontWeight="SemiBold" Margin="0,5,0,2" Foreground="{StaticResource PrimaryTeal}"/>
+                                    <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="{StaticResource CharcoalText}" Opacity="0.8"/>
+                                    
+                                    <Button Content="Investigate Transaction" Click="Investigate_Click" Margin="0,15,0,0" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Left"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </Grid>
+</Page>

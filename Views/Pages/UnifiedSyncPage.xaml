@@ -1,0 +1,132 @@
+<Page x:Class="Acczite20.Views.Pages.UnifiedSyncPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.modernwpf.com/2019"
+      Title="Enterprise Integration Hub" Background="Transparent">
+
+    <Grid Margin="30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,30">
+            <TextBlock Text="Enterprise Integration Hub" FontSize="28" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}"/>
+            <TextBlock Text="Cross-platform Data Synchronization (Tally + MERN Cloud + local Warehouse)" FontSize="14" Opacity="0.7"/>
+        </StackPanel>
+
+        <!-- Connectivity Grid -->
+        <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,30">
+            <!-- Tally Status -->
+            <Border Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="24" Margin="0,0,16,0" Effect="{StaticResource CardShadow}">
+                <StackPanel>
+                    <TextBlock Text="Tally ERP 9" FontSize="18" FontWeight="Bold" Margin="0,0,0,12"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                        <Ellipse Width="10" Height="10" Fill="Green" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="System Connected" Foreground="Green" FontWeight="SemiBold"/>
+                    </StackPanel>
+                    <TextBlock Text="Syncing accounting masters and financial vouchers." FontSize="12" Opacity="0.6" TextWrapping="Wrap" Height="40"/>
+                    <Button Content="Sync Accounting" Click="SyncAccounting_Click" Style="{StaticResource PrimaryButtonStyle}" Margin="0,12,0,0" HorizontalAlignment="Stretch"/>
+                </StackPanel>
+            </Border>
+
+            <!-- MERN Status -->
+            <Border Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="24" Margin="0,0,16,0" Effect="{StaticResource CardShadow}">
+                <StackPanel>
+                    <TextBlock Text="MERN Cloud" FontSize="18" FontWeight="Bold" Margin="0,0,0,12"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                        <Ellipse Width="10" Height="10" Fill="Green" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="API Online" Foreground="Green" FontWeight="SemiBold"/>
+                    </StackPanel>
+                    <TextBlock Text="HR, Payroll, and Admin Product masters sync." FontSize="12" Opacity="0.6" TextWrapping="Wrap" Height="40"/>
+                    <Button Content="Sync Cloud Data" Click="SyncCloud_Click" Style="{StaticResource PrimaryButtonStyle}" Margin="0,12,0,0" HorizontalAlignment="Stretch"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Warehouse Status -->
+            <Border Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="24" Margin="0,0,16,0" Effect="{StaticResource CardShadow}">
+                <StackPanel>
+                    <TextBlock Text="Warehouse Hub" FontSize="18" FontWeight="Bold" Margin="0,0,0,12"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                        <Ellipse Width="10" Height="10" Fill="Green" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="Storage Optimized" Foreground="Green" FontWeight="SemiBold"/>
+                    </StackPanel>
+                    <TextBlock Text="Cross-mapping IDs and generating business insights." FontSize="12" Opacity="0.6" TextWrapping="Wrap" Height="40"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button Content="Repair" Click="RepairMappings_Click" Style="{StaticResource SidebarButtonStyle}" HorizontalAlignment="Stretch" Foreground="{StaticResource PrimaryTeal}" Width="80" Margin="0,0,8,0"/>
+                        <Button x:Name="BtnReviewMappings" Content="Review Pending Mappings" Click="ReviewMappings_Click" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Stretch" Width="180"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Integration Health -->
+            <Border Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="24" Effect="{StaticResource CardShadow}">
+                <StackPanel>
+                    <TextBlock Text="Integration Health" FontSize="18" FontWeight="Bold" Margin="0,0,0,12"/>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Event Queue:" Foreground="{StaticResource CharcoalText}" FontSize="13"/>
+                        <TextBlock x:Name="TxtQueueDepth" Grid.Column="1" Text="0 Pending" Foreground="{StaticResource PrimaryTeal}" FontWeight="SemiBold" FontSize="13"/>
+                    </Grid>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Failed Events:" Foreground="{StaticResource CharcoalText}" FontSize="13"/>
+                        <TextBlock x:Name="TxtFailedEvents" Grid.Column="1" Text="0" Foreground="Red" FontWeight="SemiBold" FontSize="13"/>
+                    </Grid>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Last Sync:" Foreground="{StaticResource CharcoalText}" FontSize="13"/>
+                        <TextBlock x:Name="TxtLastSync" Grid.Column="1" Text="Just now" Foreground="#6B7280" FontSize="13"/>
+                    </Grid>
+                    <Button Content="Refresh Status" Click="RefreshHealth_Click" Style="{StaticResource SidebarButtonStyle}" Margin="0,12,0,0" HorizontalAlignment="Stretch" Foreground="{StaticResource PrimaryTeal}"/>
+                </StackPanel>
+            </Border>
+        </UniformGrid>
+
+        <!-- Sync Activity / Log -->
+        <Border Grid.Row="2" Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="24" Effect="{StaticResource CardShadow}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="Real-time Synchronization Log" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,16"/>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="SyncLogList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#F3F4F6" BorderThickness="0,0,0,1" Padding="0,8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="150"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Timestamp, StringFormat=HH:mm:ss}" Foreground="#6B7280" FontSize="12"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Message}" Foreground="{StaticResource CharcoalText}" FontSize="13" TextWrapping="Wrap"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding Category}" Foreground="{StaticResource PrimaryTeal}" FontSize="11" FontWeight="Bold" Opacity="0.7"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- Loading Overlay -->
+        <Border x:Name="SyncOverlay" Grid.RowSpan="3" Background="#AAFFFFFF" Visibility="Collapsed">
+            <StackPanel VerticalAlignment="Center">
+                <ui:ProgressRing IsActive="True" Width="50" Height="50" Foreground="{StaticResource PrimaryTeal}"/>
+                <TextBlock x:Name="OverlayText" Text="Syncing with Cloud..." HorizontalAlignment="Center" Margin="0,20,0,0" FontSize="16" FontWeight="SemiBold"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Page>
