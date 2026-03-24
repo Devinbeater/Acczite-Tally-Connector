@@ -12,10 +12,13 @@ namespace Acczite20.Services.Sync
         private readonly TimeSpan _maxWindow;
         private readonly TimeSpan _slowThreshold;
         private readonly TimeSpan _fastThreshold;
+        private int  _maxVouchersPerChunk;  // mutable — reduced dynamically under sustained overload
         private readonly int _maxRecordsPerChunk;
         private readonly long _largePayloadBytes;
         private readonly long _smallPayloadBytes;
         private TimeSpan _window;
+
+        private const int MinVouchersPerChunkFloor = 50; // never reduce the cap below this
 
         public VoucherSyncChunkScheduler(
             TimeSpan? initialWindow = null,
@@ -23,7 +26,7 @@ namespace Acczite20.Services.Sync
             TimeSpan? maxWindow = null,
             TimeSpan? fastThreshold = null,
             TimeSpan? slowThreshold = null,
-            int maxRecordsPerChunk = 20000,
+            int maxRecordsPerChunk = 150,
             long largePayloadBytes = 16 * 1024 * 1024,
             long smallPayloadBytes = 4 * 1024 * 1024)
         {
@@ -32,12 +35,26 @@ namespace Acczite20.Services.Sync
             _maxWindow = maxWindow ?? TimeSpan.FromDays(3);
             _fastThreshold = fastThreshold ?? TimeSpan.FromSeconds(2);
             _slowThreshold = slowThreshold ?? TimeSpan.FromSeconds(10);
+            _maxVouchersPerChunk = maxRecordsPerChunk;
             _maxRecordsPerChunk = maxRecordsPerChunk;
             _largePayloadBytes = largePayloadBytes;
             _smallPayloadBytes = smallPayloadBytes;
         }
 
-        public TimeSpan CurrentWindow => _window;
+        public TimeSpan CurrentWindow      => _window;
+        public TimeSpan MinWindow          => _minWindow;
+        public int      MaxVouchersPerChunk => _maxVouchersPerChunk;
+
+        /// <summary>
+        /// Halves the per-chunk voucher cap (floor: 50).
+        /// Called by VoucherSyncController when overload retries exceed the threshold,
+        /// meaning even smaller time windows are not helping — we need fewer records.
+        /// </summary>
+        public void ReduceVoucherCap()
+        {
+            var reduced = Math.Max(MinVouchersPerChunkFloor, _maxVouchersPerChunk / 2);
+            _maxVouchersPerChunk = reduced;
+        }
 
         public async IAsyncEnumerable<DateRange> GetChunksAsync(
             DateTimeOffset from,
@@ -73,7 +90,7 @@ namespace Acczite20.Services.Sync
             }
         }
 
-        public void Adjust(TimeSpan responseTime, int recordCount, long payloadBytes, bool failed = false)
+        public void Adjust(TimeSpan responseTime, int recordCount, long payloadBytes, bool failed = false, bool isSafeMode = false)
         {
             var next = _window;
 
@@ -81,11 +98,11 @@ namespace Acczite20.Services.Sync
             {
                 next = Scale(_window, 0.5);
             }
-            else if (responseTime <= _fastThreshold && recordCount <= _maxRecordsPerChunk / 4 && payloadBytes <= _smallPayloadBytes)
+            else if (!isSafeMode && responseTime <= _fastThreshold && recordCount <= _maxRecordsPerChunk / 4 && payloadBytes <= _smallPayloadBytes)
             {
                 next = Scale(_window, 2.0);
             }
-            else if (responseTime <= TimeSpan.FromSeconds(5) && recordCount <= _maxRecordsPerChunk / 2 && payloadBytes <= _largePayloadBytes / 2)
+            else if (!isSafeMode && responseTime <= TimeSpan.FromSeconds(5) && recordCount <= _maxRecordsPerChunk / 2 && payloadBytes <= _largePayloadBytes / 2)
             {
                 next = Scale(_window, 1.5);
             }

@@ -105,8 +105,111 @@ namespace Acczite20.Services.Sync
                 _isSyncing = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(ProgressCaption));
+                OnPropertyChanged(nameof(LiveMetricsSummary));
             }
         }
+
+        private bool _isPaused;
+        public bool IsPaused
+        {
+            get => _isPaused;
+            set { _isPaused = value; OnPropertyChanged(); }
+        }
+
+        private string _syncMode = "Auto";
+        public string SyncMode
+        {
+            get => _syncMode;
+            set { _syncMode = value; OnPropertyChanged(); OnPropertyChanged(nameof(LiveMetricsSummary)); }
+        }
+
+        private int _batchSize = 150; // Default matches standard cap
+        public int BatchSize
+        {
+            get => _batchSize;
+            set { _batchSize = value; OnPropertyChanged(); }
+        }
+
+        private string _tallyHealth = "Stable";
+        public string TallyHealth
+        {
+            get => _tallyHealth;
+            set
+            {
+                if (_tallyHealth == value) return;
+                _tallyHealth = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(TallyHealthColor));
+                OnPropertyChanged(nameof(TallyHealthDot));
+            }
+        }
+
+        /// <summary>UI hex color matching Tally health state.</summary>
+        public string TallyHealthColor => TallyHealth switch
+        {
+            "Stable"     => "#10B981",
+            "Slow"       => "#F59E0B",
+            "Overloaded" => "#EF4444",
+            _            => "#6B7280"
+        };
+
+        /// <summary>Dot fill brush for the Tally health indicator.</summary>
+        public System.Windows.Media.SolidColorBrush TallyHealthDot
+        {
+            get
+            {
+                var hex = TallyHealthColor;
+                var r = Convert.ToByte(hex.Substring(1, 2), 16);
+                var g = Convert.ToByte(hex.Substring(3, 2), 16);
+                var b = Convert.ToByte(hex.Substring(5, 2), 16);
+                var brush = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromRgb(r, g, b));
+                brush.Freeze();
+                return brush;
+            }
+        }
+
+        private bool _triggerCooldown;
+        public bool TriggerCooldown
+        {
+            get => _triggerCooldown;
+            set { _triggerCooldown = value; OnPropertyChanged(); }
+        }
+
+        // ── Live runtime metrics (updated each chunk by VoucherSyncController) ──
+
+        private int _interBatchDelayMs;
+        public int InterBatchDelayMs
+        {
+            get => _interBatchDelayMs;
+            set { _interBatchDelayMs = value; OnPropertyChanged(); }
+        }
+
+        private double _liveWindowHours;
+        public double LiveWindowHours
+        {
+            get => _liveWindowHours;
+            set { _liveWindowHours = value; OnPropertyChanged(); OnPropertyChanged(nameof(LiveMetricsSummary)); }
+        }
+
+        private int _liveDelayMs;
+        public int LiveDelayMs
+        {
+            get => _liveDelayMs;
+            set { _liveDelayMs = value; OnPropertyChanged(); OnPropertyChanged(nameof(LiveMetricsSummary)); }
+        }
+
+        private int _liveRetries;
+        public int LiveRetries
+        {
+            get => _liveRetries;
+            set { _liveRetries = value; OnPropertyChanged(); OnPropertyChanged(nameof(LiveMetricsSummary)); }
+        }
+
+        /// <summary>One-line metrics strip shown in the UI header area.</summary>
+        public string LiveMetricsSummary => IsSyncing
+            ? $"Window {LiveWindowHours:0.#}h | Delay {LiveDelayMs / 1000.0:0.#}s | Retries {LiveRetries} | Mode {SyncMode}"
+            : "Sync engine idle";
 
         private DateTime? _lastSyncTime;
         public DateTime? LastSyncTime

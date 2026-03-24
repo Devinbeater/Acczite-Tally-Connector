@@ -103,6 +103,16 @@ namespace Acczite20.Views.Pages
                 item.IsSelected = false;
         }
 
+        private void SelectAllDb_Checked(object sender, RoutedEventArgs e)
+        {
+            SelectAllDbCollections();
+        }
+
+        private void SelectAllDb_Unchecked(object sender, RoutedEventArgs e)
+        {
+            DbCollectionsListBox.SelectedItems.Clear();
+        }
+
         private void SelectAllDbCollections()
         {
             DbCollectionsListBox.SelectedItems.Clear();

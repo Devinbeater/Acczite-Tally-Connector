@@ -136,9 +136,14 @@
                             <TextBlock Text="📁" FontSize="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
                             <TextBlock x:Name="DbPanelHeader" Text="Database Collections" FontWeight="Bold" FontSize="15" Foreground="{StaticResource PrimaryTeal}" VerticalAlignment="Center"/>
                         </StackPanel>
-                        <Button Grid.Column="1" Content="Load" Click="LoadDbCollections_Click" 
-                                Style="{StaticResource SidebarButtonStyle}" Foreground="{StaticResource PrimaryTeal}" 
-                                Padding="8,2" Height="28"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <CheckBox x:Name="SelectAllDbCheckBox" Content="Select All" 
+                                      VerticalAlignment="Center" Margin="0,0,15,0"
+                                      Checked="SelectAllDb_Checked" Unchecked="SelectAllDb_Unchecked"/>
+                            <Button Content="Load" Click="LoadDbCollections_Click" 
+                                    Style="{StaticResource SidebarButtonStyle}" Foreground="{StaticResource PrimaryTeal}" 
+                                    Padding="8,2" Height="28"/>
+                        </StackPanel>
                     </Grid>
 
                     <ui:AutoSuggestBox Grid.Row="1" x:Name="DbSearchBox" PlaceholderText="Search collections..." 

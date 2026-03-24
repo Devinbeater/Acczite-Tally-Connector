@@ -39,6 +39,7 @@ namespace Acczite20.Views.Pages
 
             DataContext = this;
             LiveLogList.ItemsSource = _syncMonitor.Logs;
+            SyncProgressPanel.DataContext = _syncMonitor;
 
             Loaded += TallyExecutePage_Loaded;
             Unloaded += TallyExecutePage_Unloaded;
@@ -226,6 +227,18 @@ namespace Acczite20.Views.Pages
                     return;
                 }
 
+                // Sync parameters binding
+                _syncMonitor.SyncMode = SyncModeCombo.SelectedIndex == 1 ? "Safe" : "Auto";
+                if (_syncMonitor.SyncMode == "Safe")
+                {
+                    var item = (ComboBoxItem)BatchSizeCombo.SelectedItem;
+                    if (item != null && int.TryParse(item.Content.ToString(), out int b))
+                        _syncMonitor.BatchSize = b;
+                    else
+                        _syncMonitor.BatchSize = 25;
+                }
+                else _syncMonitor.BatchSize = 150;
+
                 DateTimeOffset? fromDate = SyncFromDatePicker.SelectedDate;
                 DateTimeOffset? toDate = SyncToDatePicker.SelectedDate;
 
@@ -274,6 +287,25 @@ namespace Acczite20.Views.Pages
                 _syncCts?.Dispose();
                 _syncCts = null;
             }
+        }
+
+        private void SyncModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (SyncModeCombo == null || BatchSizePanel == null) return;
+            BatchSizePanel.Visibility = SyncModeCombo.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void PauseButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_syncMonitor == null) return;
+            _syncMonitor.IsPaused = !_syncMonitor.IsPaused;
+            PauseButton.Content = _syncMonitor.IsPaused ? "Resume" : "Pause";
+        }
+
+        private void ForceCooldown_Click(object sender, RoutedEventArgs e)
+        {
+            if (_syncMonitor == null) return;
+            _syncMonitor.TriggerCooldown = true;
         }
     }
 }

@@ -3,9 +3,30 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Acczite20.Models;
+using Acczite20.Services;
 
 namespace Acczite20.Services.Sync
 {
+    /// <summary>
+    /// Thrown by TallyVoucherRequestExecutor when a chunk's header pass returns more
+    /// vouchers than MaxVouchersPerChunk.  The executor has already called
+    /// _scheduler.Adjust(failed:true) to halve the window before throwing.
+    /// VoucherSyncController catches this, does NOT advance the cursor, and retries
+    /// the same date range with the now-smaller window.
+    /// </summary>
+    public sealed class ChunkOverloadedException : Exception
+    {
+        public int VoucherCount { get; }
+        public int Limit        { get; }
+
+        public ChunkOverloadedException(int count, int limit, TimeSpan newWindow)
+            : base($"Chunk has {count} vouchers (limit {limit}). Window halved to {newWindow.TotalHours:0.#}h — retrying.")
+        {
+            VoucherCount = count;
+            Limit        = limit;
+        }
+    }
+
     public sealed class VoucherSyncController
     {
         private readonly VoucherSyncChunkScheduler _scheduler;
@@ -13,20 +34,48 @@ namespace Acczite20.Services.Sync
         private readonly VoucherSyncDbWriter _dbWriter;
         private readonly VoucherSyncProgressAggregator _progress;
         private readonly SyncStateMonitor _syncMonitor;
+        private readonly TallyXmlService _tallyService;
 
         public VoucherSyncController(
             VoucherSyncChunkScheduler scheduler,
             TallyVoucherRequestExecutor executor,
             VoucherSyncDbWriter dbWriter,
             VoucherSyncProgressAggregator progress,
-            SyncStateMonitor syncMonitor)
+            SyncStateMonitor syncMonitor,
+            TallyXmlService tallyService)
         {
-            _scheduler = scheduler;
-            _executor = executor;
-            _dbWriter = dbWriter;
-            _progress = progress;
-            _syncMonitor = syncMonitor;
+            _scheduler    = scheduler;
+            _executor     = executor;
+            _dbWriter     = dbWriter;
+            _progress     = progress;
+            _syncMonitor  = syncMonitor;
+            _tallyService = tallyService;
         }
+
+        // ── Manual date iteration ────────────────────────────────────────────────
+        //
+        // Previously we used _scheduler.GetChunksAsync() which pre-yields fixed DateRanges.
+        // That makes it impossible to retry a range after a ChunkOverloadedException
+        // because the iterator has already advanced past the date.
+        //
+        // New design: we drive the date cursor manually.
+        //   • On success         → advance cursor past the chunk.
+        //   • On ChunkOverloaded → do NOT advance cursor; scheduler already halved the
+        //     window; next iteration retries the same start date with a smaller window.
+        //   • Overload retries   → capped at MaxOverloadRetries so we can't loop forever.
+
+        private const int MaxOverloadRetries = 4;
+
+        // ── Inter-batch delay by mode ───────────────────────────────────────────
+        // Auto:       no extra delay (scheduler controls pace)
+        // Safe:       user-configured InterBatchDelayMs (floor 500 ms)
+        // Aggressive: 500 ms only — minimal gap between chunks
+        private int GetInterBatchDelayMs() => _syncMonitor.SyncMode switch
+        {
+            "Safe"       => Math.Max(500, _syncMonitor.InterBatchDelayMs),
+            "Aggressive" => 500,
+            _            => 0
+        };
 
         public async Task RunAsync(
             Guid orgId,
@@ -37,23 +86,51 @@ namespace Acczite20.Services.Sync
             Func<DateRange, VoucherChunkExecutionMetrics, CancellationToken, Task> onChunkCompletedAsync,
             CancellationToken ct)
         {
-            await foreach (var chunk in _scheduler.GetChunksAsync(from, to, ct))
+            if (from > to) return;
+
+            var current        = from;
+            int overloadRetries = 0;
+
+            while (current <= to)
             {
+                ct.ThrowIfCancellationRequested();
+
+                // ── Pause gate ──────────────────────────────────────────────────
+                while (_syncMonitor.IsPaused)
+                {
+                    _syncMonitor.SetStage(
+                        "Paused",
+                        "Sync is paused. Click Resume to continue.",
+                        _syncMonitor.ProgressPercent,
+                        false);
+                    await Task.Delay(500, ct);
+                }
+
+                // Build the chunk boundary from the scheduler's current adaptive window.
+                var chunkEnd = (current + _scheduler.CurrentWindow).AddTicks(-1);
+                if (chunkEnd > to) chunkEnd = to;
+                var chunk = new DateRange(current, chunkEnd);
+
+                // Push live metrics to the UI.
+                _syncMonitor.LiveWindowHours = _scheduler.CurrentWindow.TotalHours;
+                _syncMonitor.LiveRetries     = overloadRetries;
+
                 var metrics = new VoucherChunkExecutionMetrics();
                 _syncMonitor.SetStage(
                     "Streaming vouchers",
-                    $"Fetching {chunk.Start:yyyy-MM-dd HH:mm} to {chunk.End:yyyy-MM-dd HH:mm} with a {_scheduler.CurrentWindow.TotalHours:0.#} hour window.",
+                    $"Fetching {chunk.Start:yyyy-MM-dd HH:mm} – {chunk.End:yyyy-MM-dd HH:mm} | window {_scheduler.CurrentWindow.TotalHours:0.#}h | mode {_syncMonitor.SyncMode}.",
                     58,
                     true);
 
                 var channel = Channel.CreateBounded<Voucher>(new BoundedChannelOptions(5000)
                 {
-                    FullMode = BoundedChannelFullMode.Wait,
+                    FullMode     = BoundedChannelFullMode.Wait,
                     SingleReader = true,
                     SingleWriter = true
                 });
 
                 var writerTask = _dbWriter.RunAsync(channel.Reader, ct);
+                bool overloaded = false;
 
                 try
                 {
@@ -73,22 +150,88 @@ namespace Acczite20.Services.Sync
 
                     channel.Writer.TryComplete();
                     await writerTask;
-                    await onChunkCompletedAsync(chunk, metrics, ct);
+                }
+                catch (ChunkOverloadedException overloadEx)
+                {
+                    // Executor halved the window. Drain channel, don't advance cursor.
+                    channel.Writer.TryComplete(overloadEx);
+                    try { await writerTask; } catch { }
+
+                    overloadRetries++;
+                    _syncMonitor.LiveRetries = overloadRetries;
+
+                    // After 2 retries the time-window is at minimum — shrink the voucher cap too.
+                    if (overloadRetries >= 2)
+                    {
+                        _scheduler.ReduceVoucherCap();
+                        _syncMonitor.AddLog(
+                            $"Voucher cap reduced to {_scheduler.MaxVouchersPerChunk} after {overloadRetries} overload retries.",
+                            "WARNING", "THROTTLE");
+                    }
+
+                    if (overloadRetries <= MaxOverloadRetries)
+                    {
+                        _syncMonitor.AddLog(
+                            $"Chunk overloaded ({overloadEx.VoucherCount} > {overloadEx.Limit}). " +
+                            $"Retry {overloadRetries}/{MaxOverloadRetries} | window {_scheduler.CurrentWindow.TotalHours:0.#}h | cap {_scheduler.MaxVouchersPerChunk}.",
+                            "WARNING", "THROTTLE");
+                        overloaded = true;
+                    }
+                    else
+                    {
+                        // Retries exhausted. If circuit is open, execute a hard 60 s cooldown
+                        // so Tally fully recovers before the 3-pass fallback fires.
+                        if (TallyXmlService.IsCircuitOpen())
+                        {
+                            _syncMonitor.TallyHealth = "Overloaded";
+                            _syncMonitor.AddLog(
+                                "Circuit is OPEN and overload retries exhausted — 60 s hard cooldown before 3-pass fallback.",
+                                "ERROR", "COOLDOWN");
+                            _tallyService.ResetThrottle();
+                            await Task.Delay(60_000, ct);
+                        }
+                        else
+                        {
+                            _syncMonitor.AddLog(
+                                $"Overload retry limit reached (cap={_scheduler.MaxVouchersPerChunk}). 3-pass fallback will activate.",
+                                "WARNING", "THROTTLE");
+                        }
+                        overloadRetries = 0;
+                    }
                 }
                 catch (Exception ex)
                 {
                     channel.Writer.TryComplete(ex);
-
-                    try
-                    {
-                        await writerTask;
-                    }
-                    catch
-                    {
-                        // Preserve the original producer failure.
-                    }
-
+                    try { await writerTask; } catch { }
                     throw;
+                }
+
+                if (overloaded)
+                {
+                    // Retry same start with smaller window — do NOT advance cursor.
+                    await Task.Yield();
+                    continue;
+                }
+
+                overloadRetries = 0;
+                await onChunkCompletedAsync(chunk, metrics, ct);
+
+                if (chunkEnd >= to) break;
+                current = chunkEnd.AddTicks(1);
+
+                // ── Inter-batch delay (Safe / Aggressive modes) ─────────────────
+                var delayMs = GetInterBatchDelayMs();
+                _syncMonitor.LiveDelayMs = delayMs;
+                if (delayMs > 0)
+                {
+                    _syncMonitor.AddLog(
+                        $"[{_syncMonitor.SyncMode}] Waiting {delayMs / 1000.0:0.#}s before next batch.",
+                        "INFO", "THROTTLE");
+                    await Task.Delay(delayMs, ct);
+                }
+                else
+                {
+                    await Task.Yield();
                 }
             }
         }

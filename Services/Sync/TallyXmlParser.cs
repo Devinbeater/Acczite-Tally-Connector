@@ -64,146 +64,275 @@ namespace Acczite20.Services.Sync
                 .FirstOrDefault(x => x.Name.LocalName.Equals(tagName, StringComparison.OrdinalIgnoreCase))?.Value?.Trim() ?? string.Empty;
         }
 
-        public Acczite20.Models.Voucher ParseVoucherEntity(XElement vNode, Guid orgId, Guid companyId)
+        // ── Two-pass pipeline helpers ────────────────────────────────────────────
+        //
+        // Pass 1 — ParseVoucherHeader
+        //   Called with AccziteVoucherHeaders response (scalar fields only).
+        //   Returns a Voucher shell with empty collections and TotalAmount=0.
+        //   Tally serialises ~1/10th the bytes of the old single-pass pipeline.
+        //
+        // Pass 2 — MergeVoucherDetail
+        //   Called with AccziteVoucherDetail response (ALLLEDGERENTRIES.*, ALLINVENTORYENTRIES.*).
+        //   Populates LedgerEntries, InventoryAllocations, GstBreakdowns on the existing shell.
+        //   Runs the double-entry integrity check and sets TotalAmount.
+        //   Returns false when the voucher is unbalanced (caller routes to Dead Letter).
+        //
+        // ParseVoucherEntity — kept for backward compatibility; does both passes in one shot.
+
+        public Acczite20.Models.Voucher? ParseVoucherHeader(XElement vNode, Guid orgId, Guid companyId)
         {
             var now = DateTimeOffset.UtcNow;
+            var vTypeName = GetValue(vNode, "VOUCHERTYPENAME");
+            if (string.IsNullOrEmpty(vTypeName)) vTypeName = "Journal";
+
             var voucher = new Acczite20.Models.Voucher
             {
                 Id = Guid.NewGuid(),
                 OrganizationId = orgId,
                 CompanyId = companyId,
-                TallyMasterId = vNode.Attribute("REMOTEID")?.Value 
+                TallyMasterId = vNode.Attribute("REMOTEID")?.Value
                                 ?? GetValue(vNode, "MASTERID")
                                 ?? GetValue(vNode, "VOUCHERNUMBER")
                                 ?? Guid.NewGuid().ToString(),
-                VoucherNumber = GetValue(vNode, "VOUCHERNUMBER"),
+                VoucherNumber  = GetValue(vNode, "VOUCHERNUMBER"),
                 ReferenceNumber = GetValue(vNode, "REFERENCE"),
-                Narration = GetValue(vNode, "NARRATION"),
-                VoucherTypeId = Guid.Empty, // Mapper will resolve via VOUCHERTYPENAME if needed
-                VoucherDate = DateTimeOffset.TryParseExact(GetValue(vNode, "DATE"), "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out var d) ? d : DateTimeOffset.UtcNow,
-                TotalAmount = 0,
-                IsCancelled = GetValue(vNode, "ISCANCELLED").Equals("Yes", StringComparison.OrdinalIgnoreCase),
-                IsOptional = GetValue(vNode, "ISOPTIONAL").Equals("Yes", StringComparison.OrdinalIgnoreCase),
-                LastModified = now,
-                CreatedAt = now,
-                UpdatedAt = now,
-                LedgerEntries = new List<Acczite20.Models.LedgerEntry>(),
+                Narration      = GetValue(vNode, "NARRATION"),
+                VoucherTypeId  = Guid.Empty,
+                VoucherDate    = DateTimeOffset.TryParseExact(GetValue(vNode, "DATE"), "yyyyMMdd", null,
+                                     System.Globalization.DateTimeStyles.None, out var d) ? d : DateTimeOffset.UtcNow,
+                TotalAmount    = 0,
+                IsCancelled    = GetValue(vNode, "ISCANCELLED").Equals("Yes", StringComparison.OrdinalIgnoreCase),
+                IsOptional     = GetValue(vNode, "ISOPTIONAL").Equals("Yes", StringComparison.OrdinalIgnoreCase),
+                AlterId        = int.TryParse(GetValue(vNode, "ALTERID"), out var aid) ? aid : 0,
+                LastModified   = now,
+                CreatedAt      = now,
+                UpdatedAt      = now,
+                VoucherType    = new Acczite20.Models.VoucherType { Name = vTypeName },
+                LedgerEntries        = new List<Acczite20.Models.LedgerEntry>(),
                 InventoryAllocations = new List<Acczite20.Models.InventoryAllocation>(),
-                GstBreakdowns = new List<Acczite20.Models.GstBreakdown>()
+                GstBreakdowns        = new List<Acczite20.Models.GstBreakdown>()
             };
 
             if (string.IsNullOrWhiteSpace(voucher.ReferenceNumber))
-            {
                 voucher.ReferenceNumber = voucher.VoucherNumber;
-            }
 
-            // Capture Voucher Type Name for ID resolution
-            var vTypeName = GetValue(vNode, "VOUCHERTYPENAME");
-            if (string.IsNullOrEmpty(vTypeName)) vTypeName = "Journal";
-            voucher.VoucherType = new Acczite20.Models.VoucherType { Name = vTypeName };
+            return voucher;
+        }
 
-            // AlterId for incremental sync
-            var alterIdStr = GetValue(vNode, "ALTERID");
-            voucher.AlterId = int.TryParse(alterIdStr, out var aid) ? aid : 0;
+        // Returns true when the voucher passes the double-entry integrity check.
+        // Returns false when unbalanced — caller should route to Dead Letter Queue.
+        public bool MergeVoucherDetail(XElement vNode, Acczite20.Models.Voucher voucher)
+        {
+            var orgId = voucher.OrganizationId;
             var inventoryKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            // 1. Ledger Entries
+            // 1. Ledger entries (and anything nested under them)
             var ledgerNodes = vNode.Descendants()
-                .Where(x => x.Name.LocalName.Equals("ALLLEDGERENTRIES.LIST", StringComparison.OrdinalIgnoreCase) || 
-                            x.Name.LocalName.Equals("LEDGERENTRIES.LIST", StringComparison.OrdinalIgnoreCase));
+                .Where(x => x.Name.LocalName.Equals("ALLLEDGERENTRIES.LIST", StringComparison.OrdinalIgnoreCase) ||
+                            x.Name.LocalName.Equals("LEDGERENTRIES.LIST",    StringComparison.OrdinalIgnoreCase));
 
             foreach (var lNode in ledgerNodes)
             {
                 var ledgerName = GetValue(lNode, "LEDGERNAME");
                 if (string.IsNullOrWhiteSpace(ledgerName)) continue;
 
-                var amountStr = GetValue(lNode, "AMOUNT");
-                decimal amount = decimal.TryParse(amountStr, out var a) ? a : 0;
-
-                // Tally Standard: Negative = Debit, Positive = Credit in vouchers
-                decimal debit = amount < 0 ? Math.Abs(amount) : 0;
+                decimal amount = decimal.TryParse(GetValue(lNode, "AMOUNT"), out var a) ? a : 0;
+                decimal debit  = amount < 0 ? Math.Abs(amount) : 0;
                 decimal credit = amount > 0 ? amount : 0;
 
-                var entry = new Acczite20.Models.LedgerEntry
+                voucher.LedgerEntries.Add(new Acczite20.Models.LedgerEntry
                 {
-                    Id = Guid.NewGuid(),
+                    Id            = Guid.NewGuid(),
                     OrganizationId = orgId,
-                    VoucherId = voucher.Id,
-                    LedgerName = ledgerName,
-                    DebitAmount = debit,
-                    CreditAmount = credit,
+                    VoucherId     = voucher.Id,
+                    LedgerName    = ledgerName,
+                    DebitAmount   = debit,
+                    CreditAmount  = credit,
                     IsPartyLedger = GetValue(lNode, "ISPARTYLEDGER").Equals("Yes", StringComparison.OrdinalIgnoreCase)
-                };
-                voucher.LedgerEntries.Add(entry);
+                });
 
-                // 2. Inventory Allocations
-                foreach (var iNode in lNode.Descendants().Where(x => x.Name.LocalName.Equals("INVENTORYALLOCATIONS.LIST", StringComparison.OrdinalIgnoreCase)))
+                // Inventory allocations nested under ledger entries
+                foreach (var iNode in lNode.Descendants().Where(x =>
+                             x.Name.LocalName.Equals("INVENTORYALLOCATIONS.LIST", StringComparison.OrdinalIgnoreCase)))
                 {
                     var stockItem = GetValue(iNode, "STOCKITEMNAME");
                     if (!string.IsNullOrWhiteSpace(stockItem))
-                    {
                         TryAddInventoryAllocation(voucher, inventoryKeys, iNode, stockItem, orgId);
-                    }
                 }
 
-                // 3. GST Breakdown
+                // GST breakdowns nested under ledger entries
                 if (ledgerName.Contains("GST", StringComparison.OrdinalIgnoreCase))
                 {
-                    var taxClassNodes = lNode.Descendants().Where(x => x.Name.LocalName.Equals("TAXCLASSIFICATIONDETAILS.LIST", StringComparison.OrdinalIgnoreCase));
-                    foreach (var tx in taxClassNodes)
+                    var taxNodes = lNode.Descendants()
+                        .Where(x => x.Name.LocalName.Equals("TAXCLASSIFICATIONDETAILS.LIST", StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+
+                    foreach (var tx in taxNodes)
                     {
                         var taxType = GetValue(tx, "TAXCLASSIFICATIONNAME");
                         voucher.GstBreakdowns.Add(new Acczite20.Models.GstBreakdown
                         {
-                            Id = Guid.NewGuid(),
+                            Id             = Guid.NewGuid(),
                             OrganizationId = orgId,
-                            VoucherId = voucher.Id,
-                            TaxType = string.IsNullOrEmpty(taxType) ? ledgerName : taxType,
+                            VoucherId      = voucher.Id,
+                            TaxType        = string.IsNullOrEmpty(taxType) ? ledgerName : taxType,
                             AssessableValue = decimal.TryParse(GetValue(tx, "ASSESSABLEVALUE"), out var av) ? av : 0,
-                            TaxRate = decimal.TryParse(GetValue(tx, "TAXRATE"), out var tr) ? tr : 0,
-                            TaxAmount = Math.Abs(credit > 0 ? credit : debit)
+                            TaxRate        = decimal.TryParse(GetValue(tx, "TAXRATE"), out var tr) ? tr : 0,
+                            TaxAmount      = Math.Abs(credit > 0 ? credit : debit)
                         });
                     }
 
-                    if (!taxClassNodes.Any()) 
+                    if (taxNodes.Count == 0)
                     {
                         voucher.GstBreakdowns.Add(new Acczite20.Models.GstBreakdown
                         {
-                            Id = Guid.NewGuid(),
+                            Id             = Guid.NewGuid(),
                             OrganizationId = orgId,
-                            VoucherId = voucher.Id,
-                            TaxType = ledgerName,
-                            TaxAmount = Math.Abs(credit > 0 ? credit : debit)
+                            VoucherId      = voucher.Id,
+                            TaxType        = ledgerName,
+                            TaxAmount      = Math.Abs(credit > 0 ? credit : debit)
                         });
                     }
                 }
             }
 
-            // Some voucher shapes expose inventory at the voucher root rather than under ledger lines.
+            // 2. Root-level inventory entries (non-accounting vouchers expose these at the VOUCHER level)
             foreach (var iNode in vNode.Descendants().Where(x =>
                          x.Name.LocalName.Equals("ALLINVENTORYENTRIES.LIST", StringComparison.OrdinalIgnoreCase) ||
-                         x.Name.LocalName.Equals("INVENTORYENTRIES.LIST", StringComparison.OrdinalIgnoreCase)))
+                         x.Name.LocalName.Equals("INVENTORYENTRIES.LIST",    StringComparison.OrdinalIgnoreCase)))
             {
                 var stockItem = GetValue(iNode, "STOCKITEMNAME");
                 if (!string.IsNullOrWhiteSpace(stockItem))
-                {
                     TryAddInventoryAllocation(voucher, inventoryKeys, iNode, stockItem, orgId);
-                }
             }
 
-            // --- VOUCHER INTEGRITY CHECK (Golden Rule) ---
-            decimal totalDebit = voucher.LedgerEntries.Sum(e => e.DebitAmount);
+            // 3. Double-entry integrity check
+            decimal totalDebit  = voucher.LedgerEntries.Sum(e => e.DebitAmount);
             decimal totalCredit = voucher.LedgerEntries.Sum(e => e.CreditAmount);
 
             if (Math.Abs(totalDebit - totalCredit) > 0.01m && !voucher.IsCancelled)
-            {
-                // Integrity Breach: This voucher is unbalanced. 
-                // We return null to signal the Orchestrator to route this to the Dead Letter Queue.
-                return null!; 
-            }
+                return false; // caller routes to Dead Letter Queue
 
             voucher.TotalAmount = totalCredit;
-            return voucher;
+            return true;
+        }
+
+        // ── 3-pass split helpers (used when at MinWindow with overload) ─────────────
+        //
+        // Pass 2a — MergeLedgerEntries
+        //   Source: AccziteVoucherLedgers  (MASTERID, ALLLEDGERENTRIES.*)
+        //   Processes: ledger entries + nested inventory + nested GST
+        //   Runs the double-entry integrity check and sets TotalAmount.
+        //   Returns false when unbalanced.
+        //
+        // Pass 2b — MergeInventoryEntries
+        //   Source: AccziteVoucherInventory  (MASTERID, ALLINVENTORYENTRIES.*)
+        //   Processes: root-level inventory entries only — no integrity check needed
+        //   (accounting balance is entirely determined by ALLLEDGERENTRIES).
+
+        public bool MergeLedgerEntries(XElement vNode, Acczite20.Models.Voucher voucher)
+        {
+            var orgId = voucher.OrganizationId;
+            var inventoryKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            var ledgerNodes = vNode.Descendants()
+                .Where(x => x.Name.LocalName.Equals("ALLLEDGERENTRIES.LIST", StringComparison.OrdinalIgnoreCase) ||
+                            x.Name.LocalName.Equals("LEDGERENTRIES.LIST",    StringComparison.OrdinalIgnoreCase));
+
+            foreach (var lNode in ledgerNodes)
+            {
+                var ledgerName = GetValue(lNode, "LEDGERNAME");
+                if (string.IsNullOrWhiteSpace(ledgerName)) continue;
+
+                decimal amount = decimal.TryParse(GetValue(lNode, "AMOUNT"), out var a) ? a : 0;
+                decimal debit  = amount < 0 ? Math.Abs(amount) : 0;
+                decimal credit = amount > 0 ? amount : 0;
+
+                voucher.LedgerEntries.Add(new Acczite20.Models.LedgerEntry
+                {
+                    Id             = Guid.NewGuid(),
+                    OrganizationId = orgId,
+                    VoucherId      = voucher.Id,
+                    LedgerName     = ledgerName,
+                    DebitAmount    = debit,
+                    CreditAmount   = credit,
+                    IsPartyLedger  = GetValue(lNode, "ISPARTYLEDGER").Equals("Yes", StringComparison.OrdinalIgnoreCase)
+                });
+
+                foreach (var iNode in lNode.Descendants().Where(x =>
+                             x.Name.LocalName.Equals("INVENTORYALLOCATIONS.LIST", StringComparison.OrdinalIgnoreCase)))
+                {
+                    var stockItem = GetValue(iNode, "STOCKITEMNAME");
+                    if (!string.IsNullOrWhiteSpace(stockItem))
+                        TryAddInventoryAllocation(voucher, inventoryKeys, iNode, stockItem, orgId);
+                }
+
+                if (ledgerName.Contains("GST", StringComparison.OrdinalIgnoreCase))
+                {
+                    var taxNodes = lNode.Descendants()
+                        .Where(x => x.Name.LocalName.Equals("TAXCLASSIFICATIONDETAILS.LIST", StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+
+                    foreach (var tx in taxNodes)
+                    {
+                        var taxType = GetValue(tx, "TAXCLASSIFICATIONNAME");
+                        voucher.GstBreakdowns.Add(new Acczite20.Models.GstBreakdown
+                        {
+                            Id              = Guid.NewGuid(),
+                            OrganizationId  = orgId,
+                            VoucherId       = voucher.Id,
+                            TaxType         = string.IsNullOrEmpty(taxType) ? ledgerName : taxType,
+                            AssessableValue = decimal.TryParse(GetValue(tx, "ASSESSABLEVALUE"), out var av) ? av : 0,
+                            TaxRate         = decimal.TryParse(GetValue(tx, "TAXRATE"), out var tr) ? tr : 0,
+                            TaxAmount       = Math.Abs(credit > 0 ? credit : debit)
+                        });
+                    }
+
+                    if (taxNodes.Count == 0)
+                    {
+                        voucher.GstBreakdowns.Add(new Acczite20.Models.GstBreakdown
+                        {
+                            Id             = Guid.NewGuid(),
+                            OrganizationId = orgId,
+                            VoucherId      = voucher.Id,
+                            TaxType        = ledgerName,
+                            TaxAmount      = Math.Abs(credit > 0 ? credit : debit)
+                        });
+                    }
+                }
+            }
+
+            decimal totalDebit  = voucher.LedgerEntries.Sum(e => e.DebitAmount);
+            decimal totalCredit = voucher.LedgerEntries.Sum(e => e.CreditAmount);
+            if (Math.Abs(totalDebit - totalCredit) > 0.01m && !voucher.IsCancelled)
+                return false;
+
+            voucher.TotalAmount = totalCredit;
+            return true;
+        }
+
+        // No integrity check — root-level inventory does not affect accounting balance.
+        public void MergeInventoryEntries(XElement vNode, Acczite20.Models.Voucher voucher)
+        {
+            var inventoryKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var iNode in vNode.Descendants().Where(x =>
+                         x.Name.LocalName.Equals("ALLINVENTORYENTRIES.LIST", StringComparison.OrdinalIgnoreCase) ||
+                         x.Name.LocalName.Equals("INVENTORYENTRIES.LIST",    StringComparison.OrdinalIgnoreCase)))
+            {
+                var stockItem = GetValue(iNode, "STOCKITEMNAME");
+                if (!string.IsNullOrWhiteSpace(stockItem))
+                    TryAddInventoryAllocation(voucher, inventoryKeys, iNode, stockItem, voucher.OrganizationId);
+            }
+        }
+
+        // Single-pass convenience wrapper — used by any code path that still provides
+        // a full VOUCHER element containing both header fields and ledger detail.
+        public Acczite20.Models.Voucher? ParseVoucherEntity(XElement vNode, Guid orgId, Guid companyId)
+        {
+            var voucher = ParseVoucherHeader(vNode, orgId, companyId);
+            if (voucher == null) return null;
+            return MergeVoucherDetail(vNode, voucher) ? voucher : null;
         }
 
         private void TryAddInventoryAllocation(

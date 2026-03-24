@@ -477,10 +477,17 @@ namespace Acczite20.Services.Sync
             }
 
             var progress = new VoucherSyncProgressAggregator();
-            var scheduler = new VoucherSyncChunkScheduler();
-            var executor = new TallyVoucherRequestExecutor(_tallyService, _xmlParser, scheduler);
+            int schedulerCap = _syncMonitor.SyncMode == "Safe" ? _syncMonitor.BatchSize : 150;
+            var scheduler = new VoucherSyncChunkScheduler(
+                initialWindow:      TimeSpan.FromHours(2),
+                minWindow:          TimeSpan.FromHours(1),
+                maxWindow:          TimeSpan.FromDays(1),
+                slowThreshold:      TimeSpan.FromSeconds(8),  // shrink window when Tally is under stress
+                fastThreshold:      TimeSpan.FromSeconds(3),  // only grow when clearly fast
+                maxRecordsPerChunk: schedulerCap);             // dynamic safe cap
+            var executor = new TallyVoucherRequestExecutor(_tallyService, _xmlParser, scheduler, _syncMonitor);
             var dbWriter = new VoucherSyncDbWriter(orgId, _scopeFactory, _syncMonitor, progress, sw);
-            var controller = new VoucherSyncController(scheduler, executor, dbWriter, progress, _syncMonitor);
+            var controller = new VoucherSyncController(scheduler, executor, dbWriter, progress, _syncMonitor, _tallyService);
 
             await controller.RunAsync(
                 orgId,

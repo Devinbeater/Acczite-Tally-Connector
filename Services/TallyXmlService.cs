@@ -47,10 +47,25 @@ namespace Acczite20.Services
         //   1 failure  → 3000ms
         //   2 failures → 6000ms (capped)
         //   3 failures → circuit opens
-        private const int BaseDelayMs   = 1500;
-        private const int MaxDelayMs    = 30_000; // Tally can need 20-60s to recover after a crash
-        // Stream exports are the heaviest operation — add extra headroom on top of the backoff.
-        private const int StreamExtraCostMs = 1000;
+        // ── Backoff timing ─────────────────────────────────────────────────────────
+        // BaseDelayMs × 2^failures gives the inter-request floor.
+        //   0 failures → 4000ms
+        //   1 failure  → 8000ms
+        //   2 failures → 16000ms
+        //   3 failures → circuit opens
+        private const int BaseDelayMs       = 4000;   // hard floor between any two requests
+        private const int MaxDelayMs        = 30_000; // Tally needs up to 60s to recover after a crash
+        private const int StreamExtraCostMs = 2500;   // extra headroom for streaming exports on top of backoff
+
+        // ── Adaptive penalty ───────────────────────────────────────────────────────
+        // _extraDelayMs accumulates +1500ms each time a response takes > 8s
+        // and decays -500ms each time a response takes < 3s (floor: 0).
+        // This gives Tally more breathing room proactively — before the circuit opens.
+        private static int _extraDelayMs = 0;
+        private const int SlowPenaltyThresholdMs  = 8_000; // > 8s → add 1500ms penalty
+        private const int SlowPenaltyAddMs        = 1_500;
+        private const int FastRecoveryThresholdMs = 3_000; // < 3s → decay 500ms penalty
+        private const int FastRecoveryDecayMs     = 500;
 
         // ── State-Machine Circuit Breaker ──────────────────────────────────────────
         //
@@ -78,12 +93,20 @@ namespace Acczite20.Services
         private static int  _consecutiveFailures        = 0;
         private static DateTime _circuitOpenedAt        = DateTime.MinValue;
         private static bool _probeInFlight              = false;
+
+        // ── Consecutive-slow cooldown ──────────────────────────────────────────────
+        // If the last N responses all took > SlowPenaltyThresholdMs (8s), Tally is in
+        // a slow-death spiral. Force a 15s hard pause before the next request.
+        // Reset to 0 on any fast response (< FastRecoveryThresholdMs).
+        private static int _consecutiveSlowCount = 0;
+        private const int CooldownTriggerCount   = 3;
+        private const int CooldownDelayMs        = 15_000;
         private static int  _warmingSuccesses           = 0;
 
         private const int CircuitBreakerThreshold  = 3;    // weighted failure score to open
         private const int CircuitCooldownSeconds   = 180;  // Open → HalfOpen after 3 minutes
         private const int WarmingRequiredSuccesses = 3;    // successes to graduate from Warming → Closed
-        private const int SlowResponseThresholdMs  = 5000; // responses slower than this count as soft failure
+        private const int SlowResponseThresholdMs  = 3000; // was 5000 — increment failures earlier
 
         private readonly SyncStateMonitor? _syncMonitor;
 
@@ -92,9 +115,10 @@ namespace Acczite20.Services
             // Quick check client — 30s is plenty for status probes and small requests.
             _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 
-            // Export client — large company with thousands of ledgers or months of vouchers
-            // can take 3-5 minutes for Tally to serialize. We NEVER want to time out mid-export.
-            _exportHttpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+            // Export client — with two-pass chunking each request is a fraction of the old
+            // single-pass payload. 90s is generous for any single pass over a 1–2 hour window.
+            // Fail-fast on hang: a stalled Tally is worse than a retried smaller chunk.
+            _exportHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
 
             _syncMonitor = syncMonitor;
         }
@@ -317,23 +341,7 @@ namespace Acczite20.Services
                 "List of Payroll Cost Centres", "List of Attendance Types", "List of Employees", "Voucher"
             };
 
-            var available = new List<string>();
-            foreach (var col in knownCollections)
-            {
-                try
-                {
-                    var envelope = BuildEnvelope(col);
-                    var response = await SendEnvelopeAsync(envelope);
-                    if (!string.IsNullOrWhiteSpace(response) && response.Contains("<"))
-                    {
-                        available.Add(col);
-                    }
-                    await Task.Delay(300); // Throttling: prevent DDOS-ing Tally
-                }
-                catch { }
-            }
-
-            return available;
+            return knownCollections.ToList();
         }
 
         public async Task<List<string>> GetCollectionFieldsAsync(string reportName)
@@ -365,7 +373,7 @@ namespace Acczite20.Services
             catch { return new List<string>(); }
         }
 
-        public async Task<string?> ExportCollectionXmlAsync(string collectionOrReport, DateTimeOffset? fromDate = null, DateTimeOffset? toDate = null, bool isCollection = true)
+        public async Task<string?> ExportCollectionXmlAsync(string collectionOrReport, DateTimeOffset? fromDate = null, DateTimeOffset? toDate = null, bool isCollection = true, string? idList = null)
         {
             var from = (fromDate ?? DateTimeOffset.Now.AddYears(-5)).ToString("yyyyMMdd");
             var to = (toDate ?? DateTimeOffset.Now).ToString("yyyyMMdd");
@@ -391,15 +399,27 @@ namespace Acczite20.Services
   </TDLMESSAGE>
 </TDL>";
                 }
-                else if (collectionId == "List of Ledgers")
+                else if (collectionId == "List of Ledgers" || collectionId == "AccziteLedgerHeaders")
                 {
-                    collectionId = "AccziteLedgers"; // Use isolated custom collection
+                    collectionId = "AccziteLedgerHeaders"; // Use isolated custom collection
                     tdlPart = @"
 <TDL>
   <TDLMESSAGE>
-    <COLLECTION NAME=""AccziteLedgers"" ISMODIFY=""No"">
+    <COLLECTION NAME=""AccziteLedgerHeaders"" ISMODIFY=""No"">
       <TYPE>Ledger</TYPE>
-      <FETCH>MASTERID, NAME, PARENT, OPENINGBALANCE, CLOSINGBALANCE, GSTAPPLICABILITY, GSTREGISTRATIONTYPE, PARTYGSTIN, GSTIN, ISBILLWISEON, LEDSTATENAME, INCOMETAXNUMBER, EMAIL, MAILINGNAME</FETCH>
+      <FETCH>MASTERID, NAME, PARENT, OPENINGBALANCE, CLOSINGBALANCE</FETCH>
+    </COLLECTION>
+  </TDLMESSAGE>
+</TDL>";
+                }
+                else if (collectionId == "AccziteLedgerDetails")
+                {
+                    tdlPart = @"
+<TDL>
+  <TDLMESSAGE>
+    <COLLECTION NAME=""AccziteLedgerDetails"" ISMODIFY=""No"">
+      <TYPE>Ledger</TYPE>
+      <FETCH>MASTERID, GSTAPPLICABILITY, GSTREGISTRATIONTYPE, PARTYGSTIN, GSTIN, ISBILLWISEON, LEDSTATENAME, INCOMETAXNUMBER, EMAIL, MAILINGNAME, ADDRESS.LIST.*</FETCH>
     </COLLECTION>
   </TDLMESSAGE>
 </TDL>";
@@ -418,6 +438,26 @@ namespace Acczite20.Services
 </TDL>";
                 }
 
+                string idFilterTdl = string.IsNullOrEmpty(idList) ? "" : @"
+            <SYSTEM TYPE=""Variable"" NAME=""AccziteIdList"" DATATYPE=""String""/>
+            <SYSTEM TYPE=""Formulae"" NAME=""AccziteIdFilter"">
+              $$InList:$MASTERID:##AccziteIdList
+            </SYSTEM>";
+
+                string filterSyntax = string.IsNullOrEmpty(idList) ? "" : "\n      <FILTER>AccziteIdFilter</FILTER>";
+
+                // Inject FILTER into the collection definition if it doesn't have one
+                if (!string.IsNullOrEmpty(filterSyntax) && tdlPart.Contains("</TYPE>") && !tdlPart.Contains("<FILTER>"))
+                {
+                    tdlPart = tdlPart.Replace("</TYPE>", "</TYPE>" + filterSyntax);
+                }
+
+                // Inject FORMULAE into the TDLMESSAGE if we added a filter
+                if (!string.IsNullOrEmpty(idFilterTdl) && tdlPart.Contains("</TDLMESSAGE>"))
+                {
+                    tdlPart = tdlPart.Replace("</TDLMESSAGE>", idFilterTdl + "\n  </TDLMESSAGE>");
+                }
+
                 envelope = $@"
 <ENVELOPE>
   <HEADER>
@@ -428,7 +468,7 @@ namespace Acczite20.Services
   </HEADER>
   <BODY>
     <DESC>
-        {GetStaticVariablesXml(from, to)}
+        {GetStaticVariablesXml(from, to, idList)}
         {tdlPart}
     </DESC>
   </BODY>
@@ -561,7 +601,8 @@ namespace Acczite20.Services
             DateTimeOffset? fromDate = null,
             DateTimeOffset? toDate = null,
             bool isCollection = true,
-            CancellationToken ct = default)
+            CancellationToken ct = default,
+            string? idList = null)
         {
             var from = (fromDate ?? DateTimeOffset.Now.AddDays(-1)).ToString("yyyyMMdd");
             var to = (toDate ?? DateTimeOffset.Now).ToString("yyyyMMdd");
@@ -570,6 +611,17 @@ namespace Acczite20.Services
             if (isCollection)
             {
                 var collectionTdl = GetSingleCollectionTdl(collectionOrReport);
+                if (!string.IsNullOrEmpty(idList))
+                {
+                    collectionTdl = collectionTdl.Replace("<FILTER>AccziteDateFilter</FILTER>", "<FILTER>AccziteIdFilter</FILTER>");
+                }
+
+                string idFilterTdl = string.IsNullOrEmpty(idList) ? "" : @"
+            <SYSTEM TYPE=""Variable"" NAME=""AccziteIdList"" DATATYPE=""String""/>
+            <SYSTEM TYPE=""Formulae"" NAME=""AccziteIdFilter"">
+              $$InList:$MASTERID:##AccziteIdList
+            </SYSTEM>";
+
                 envelope = $@"
 <ENVELOPE>
   <HEADER>
@@ -580,10 +632,11 @@ namespace Acczite20.Services
   </HEADER>
   <BODY>
     <DESC>
-        {GetStaticVariablesXml(from, to)}
+        {GetStaticVariablesXml(from, to, idList)}
         <TDL>
           <TDLMESSAGE>
             {collectionTdl}
+            {idFilterTdl}
             <SYSTEM TYPE=""Formulae"" NAME=""AccziteDateFilter"">
               $$IsBetween:$Date:##SVFROMDATE:##SVTODATE
             </SYSTEM>
@@ -720,11 +773,13 @@ namespace Acczite20.Services
               <FETCH>MASTERID, ALLLEDGERENTRIES.*</FETCH>
             </COLLECTION>",
 
+            // Used as Pass 3 in the min-window 3-pass fallback.
+            // Fetches root-level inventory entries — much lighter than ALLLEDGERENTRIES.
             "AccziteVoucherInventory" => @"
             <COLLECTION NAME=""AccziteVoucherInventory"" ISMODIFY=""No"">
               <TYPE>Voucher</TYPE>
               <FILTER>AccziteDateFilter</FILTER>
-              <FETCH>MASTERID, INVENTORYALLOCATIONS.*</FETCH>
+              <FETCH>MASTERID, ALLINVENTORYENTRIES.*</FETCH>
             </COLLECTION>",
 
             "AccziteVoucherGST" => @"
@@ -746,6 +801,17 @@ namespace Acczite20.Services
               <TYPE>Voucher</TYPE>
               <FILTER>AccziteDateFilter</FILTER>
               <FETCH>MASTERID, ALTERID, DATE, VOUCHERNUMBER, REFERENCE, VOUCHERTYPENAME, NARRATION, ISCANCELLED, ISOPTIONAL, ALLLEDGERENTRIES.*, ALLINVENTORYENTRIES.*, INVENTORYALLOCATIONS.*, TAXCLASSIFICATIONDETAILS.*</FETCH>
+            </COLLECTION>",
+
+            // Pass 2 of the two-pass pipeline — ledger + inventory detail only.
+            // Excludes scalar header fields so Tally doesn't serialise them twice.
+            // ALLLEDGERENTRIES.* includes nested INVENTORYALLOCATIONS and TAXCLASSIFICATIONDETAILS.
+            // ALLINVENTORYENTRIES.* covers root-level inventory entries (non-accounting vouchers).
+            "AccziteVoucherDetail" => @"
+            <COLLECTION NAME=""AccziteVoucherDetail"" ISMODIFY=""No"">
+              <TYPE>Voucher</TYPE>
+              <FILTER>AccziteDateFilter</FILTER>
+              <FETCH>MASTERID, ALLLEDGERENTRIES.*, ALLINVENTORYENTRIES.*</FETCH>
             </COLLECTION>",
 
             // Fallback: request the named collection without a FETCH restriction
@@ -817,22 +883,24 @@ namespace Acczite20.Services
         }
 
         /// <summary>
-        /// Exponential backoff: delay = BaseDelayMs × 2^failures, capped at MaxDelayMs.
-        /// In Warming state a fixed 3s delay gives Tally a soft ramp-up period.
+        /// Exponential backoff: delay = BaseDelayMs × 2^failures + _extraDelayMs, capped at MaxDelayMs.
+        /// In Warming state a fixed 4s delay gives Tally a soft ramp-up period.
+        /// _extraDelayMs is a per-response penalty that accumulates when Tally is slow.
         /// </summary>
         public static int CurrentDelayMs(bool isStream = false)
         {
             int delay;
             if (_circuitState == CircuitState.Warming)
             {
-                delay = 3000; // soft ramp-up: fixed 3s until circuit is fully closed
+                delay = 4000; // soft ramp-up: fixed 4s (matches new BaseDelayMs) until circuit closes
             }
             else
             {
-                var exp = Math.Min(_consecutiveFailures, 4); // cap exponent: 2^4=16 → 24000ms before cap
+                var exp = Math.Min(_consecutiveFailures, 4); // cap exponent: 2^4=16 → 64000ms before cap
                 delay = (int)(BaseDelayMs * Math.Pow(2, exp));
                 delay = Math.Min(delay, MaxDelayMs);
             }
+            delay += _extraDelayMs; // adaptive slow-response penalty (0 when Tally is healthy)
             return isStream ? delay + StreamExtraCostMs : delay;
         }
 
@@ -894,6 +962,7 @@ namespace Acczite20.Services
                     $"Circuit breaker OPENED (score={failures}). All requests paused for {CircuitCooldownSeconds}s.",
                     "ERROR", "CIRCUIT");
             }
+            if (_syncMonitor != null) _syncMonitor.TallyHealth = GetHealthState();
         }
 
         /// <summary>Classifies an exception and records the appropriate failure weight.</summary>
@@ -922,18 +991,82 @@ namespace Acczite20.Services
         }
 
         /// <summary>
-        /// Called after a successful response. If the response was slow,
-        /// records a soft failure to increase backoff before hard failures occur.
+        /// Called after a successful response. Manages both the circuit-breaker failure score
+        /// and the adaptive _extraDelayMs penalty:
+        ///   • response > 8s  → +1500ms penalty + soft failure score increment
+        ///   • response > 3s  → soft failure score increment (backoff increase)
+        ///   • response &lt; 3s  → decay _extraDelayMs by 500ms
         /// </summary>
         private void RecordResponseTime(TimeSpan elapsed)
         {
+            if (elapsed.TotalMilliseconds >= SlowPenaltyThresholdMs && _circuitState == CircuitState.Closed)
+            {
+                // Very slow (> 8s): escalate per-request penalty AND increment failure score.
+                var newExtra = System.Threading.Interlocked.Add(ref _extraDelayMs, SlowPenaltyAddMs);
+                System.Threading.Interlocked.Increment(ref _consecutiveFailures);
+
+                // Consecutive-slow cooldown: if N requests in a row all took > 8s, force a
+                // hard 15s pause so Tally's GC can recover before the next request fires.
+                var slowCount = System.Threading.Interlocked.Increment(ref _consecutiveSlowCount);
+                if (slowCount >= CooldownTriggerCount)
+                {
+                    System.Threading.Interlocked.Exchange(ref _extraDelayMs,
+                        Math.Max(_extraDelayMs, CooldownDelayMs));
+                    _syncMonitor?.AddLog(
+                        $"Tally slow x{slowCount} in a row — forcing {CooldownDelayMs / 1000}s cooldown before next request.",
+                        "ERROR", "THROTTLE");
+                }
+                else
+                {
+                    _syncMonitor?.AddLog(
+                        $"Tally very slow ({elapsed.TotalSeconds:N1}s) — extra delay now {newExtra}ms ({slowCount}/{CooldownTriggerCount} before cooldown).",
+                        "WARNING", "THROTTLE");
+                }
+                return;
+            }
+
             if (elapsed.TotalMilliseconds >= SlowResponseThresholdMs && _circuitState == CircuitState.Closed)
             {
                 System.Threading.Interlocked.Increment(ref _consecutiveFailures);
                 _syncMonitor?.AddLog(
                     $"Tally slow response ({elapsed.TotalSeconds:N1}s) — backoff increased pre-emptively.",
                     "WARNING", "TALLY");
+                return;
             }
+
+            // Fast response — reset slow-streak and decay the extra penalty.
+            System.Threading.Interlocked.Exchange(ref _consecutiveSlowCount, 0);
+            if (elapsed.TotalMilliseconds < FastRecoveryThresholdMs && _extraDelayMs > 0)
+            {
+                var newExtra = Math.Max(0, _extraDelayMs - FastRecoveryDecayMs);
+                System.Threading.Interlocked.Exchange(ref _extraDelayMs, newExtra);
+                if (newExtra == 0)
+                    _syncMonitor?.AddLog("Throttle penalties fully recovered — Tally healthy.", "SUCCESS", "THROTTLE");
+            }
+            if (_syncMonitor != null) _syncMonitor.TallyHealth = GetHealthState();
+        }
+
+        /// <summary>
+        /// Resets the adaptive throttle penalty and consecutive-slow streak.
+        /// Called by VoucherSyncController when entering cooldown mode so the
+        /// next request starts with a clean backoff baseline.
+        /// </summary>
+        public void ResetThrottle()
+        {
+            System.Threading.Interlocked.Exchange(ref _extraDelayMs, 0);
+            System.Threading.Interlocked.Exchange(ref _consecutiveSlowCount, 0);
+            _syncMonitor?.AddLog("Throttle reset — adaptive penalty cleared.", "INFO", "THROTTLE");
+        }
+
+        /// <summary>
+        /// Returns "Stable", "Slow", or "Overloaded" based on current circuit + penalty state.
+        /// </summary>
+        public string GetHealthState()
+        {
+            if (_circuitState == CircuitState.Open) return "Overloaded";
+            if (_extraDelayMs >= CooldownDelayMs || _consecutiveSlowCount >= CooldownTriggerCount) return "Overloaded";
+            if (_extraDelayMs > 0 || _consecutiveFailures > 0) return "Slow";
+            return "Stable";
         }
 
         private static bool TryBeginProbe()
@@ -1075,7 +1208,7 @@ namespace Acczite20.Services
             return sb.ToString();
         }
 
-        private string GetStaticVariablesXml(string? fromDate = null, string? toDate = null)
+        private string GetStaticVariablesXml(string? fromDate = null, string? toDate = null, string? idList = null)
         {
             var company = SessionManager.Instance.TallyCompanyName?.Trim();
             
@@ -1088,11 +1221,14 @@ namespace Acczite20.Services
             if (!string.IsNullOrEmpty(fromDate)) dateVars += $"<SVFROMDATE>{fromDate}</SVFROMDATE>";
             if (!string.IsNullOrEmpty(toDate)) dateVars += $"<SVTODATE>{toDate}</SVTODATE>";
 
+            var idVars = string.IsNullOrEmpty(idList) ? "" : $"<AccziteIdList>{idList}</AccziteIdList>";
+
             return $@"
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
         {dateVars}
         {companyVar}
+        {idVars}
       </STATICVARIABLES>";
         }
 

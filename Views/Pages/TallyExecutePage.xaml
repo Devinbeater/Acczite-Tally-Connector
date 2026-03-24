@@ -53,10 +53,12 @@
                     
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,0,0,24">
                         <StackPanel>
-                            <Border Background="#F8FAFC" BorderThickness="1" BorderBrush="#CBD5E1" CornerRadius="10" Padding="24">
-                                <TextBlock Text="{Binding Summary}" FontSize="14" Foreground="{StaticResource CharcoalText}" 
-                                           TextWrapping="Wrap" LineHeight="28" FontFamily="Consolas" Opacity="0.9"/>
-                            </Border>
+                            <Expander Header="Sync Logs" IsExpanded="False" Background="#F8FAFC" BorderBrush="#CBD5E1" BorderThickness="1" ui:ControlHelper.CornerRadius="10">
+                                <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto" Margin="10">
+                                    <TextBlock Text="{Binding Summary}" FontSize="14" Foreground="{StaticResource CharcoalText}" 
+                                               TextWrapping="Wrap" LineHeight="28" FontFamily="Consolas" Opacity="0.9"/>
+                                </ScrollViewer>
+                            </Expander>
 
                             <!-- Sync Progress Panel -->
                             <StackPanel x:Name="SyncProgressPanel" Visibility="Collapsed" Margin="0,24,0,0">
@@ -84,6 +86,12 @@
                                                          Value="0" Margin="0,14,0,0"
                                                          Foreground="{StaticResource PrimaryTeal}" Background="#DDE7EE" BorderThickness="0"
                                                          ui:ControlHelper.CornerRadius="6"/>
+
+                                            <!-- Live Controls -->
+                                            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                                <Button x:Name="PauseButton" Content="Pause" Width="90" Click="PauseButton_Click" Height="30" FontSize="12" Background="#E2E8F0" BorderThickness="0"/>
+                                                <Button x:Name="CooldownButton" Content="Cooldown" Margin="10,0,0,0" Width="110" Click="ForceCooldown_Click" Height="30" FontSize="12" Background="#FEE2E2" Foreground="#DC2626" BorderBrush="#FECACA"/>
+                                            </StackPanel>
 
                                             <DockPanel Margin="0,10,0,0">
                                                 <TextBlock x:Name="SyncProgressCaptionText" Text="Sync engine idle"
@@ -196,6 +204,26 @@
                                         <StackPanel>
                                             <TextBlock Text="To Date" FontSize="12" Foreground="#64748B" Margin="0,0,0,6" />
                                             <DatePicker x:Name="SyncToDatePicker" Width="160" />
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <!-- Safe Sync Options -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                        <StackPanel Margin="0,0,24,0">
+                                            <TextBlock Text="Sync Mode" FontSize="12" Foreground="#64748B" Margin="0,0,0,6" />
+                                            <ComboBox x:Name="SyncModeCombo" Width="160" SelectedIndex="0" SelectionChanged="SyncModeCombo_SelectionChanged" ui:ControlHelper.CornerRadius="4">
+                                                <ComboBoxItem Content="Auto (Adaptive)"/>
+                                                <ComboBoxItem Content="Safe (Controlled)"/>
+                                            </ComboBox>
+                                        </StackPanel>
+                                        <StackPanel x:Name="BatchSizePanel" Visibility="Collapsed">
+                                            <TextBlock Text="Batch Size" FontSize="12" Foreground="#64748B" Margin="0,0,0,6" />
+                                            <ComboBox x:Name="BatchSizeCombo" Width="100" SelectedIndex="1" ui:ControlHelper.CornerRadius="4">
+                                                <ComboBoxItem Content="10"/>
+                                                <ComboBoxItem Content="25"/>
+                                                <ComboBoxItem Content="50"/>
+                                                <ComboBoxItem Content="100"/>
+                                            </ComboBox>
                                         </StackPanel>
                                     </StackPanel>
                                 </StackPanel>
