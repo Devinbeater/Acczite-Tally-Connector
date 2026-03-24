@@ -38,11 +38,11 @@ namespace Acczite20.Services.Sync
         public string EntityName { get; set; } = string.Empty;
         public DateTime? LastSync { get; set; }
         public int RecordsSynced { get; set; }
-        public string Status { get; set; } = "IDLE";
+        public string SyncStatus { get; set; } = "IDLE";
 
         // Helpers for UI
-        public string StatusText => Status;
-        public System.Windows.Media.Brush StatusColor => Status switch
+        public string StatusText => SyncStatus;
+        public System.Windows.Media.Brush StatusColor => SyncStatus switch
         {
             "RUNNING" => System.Windows.Media.Brushes.DeepSkyBlue,
             "SUCCESS" => SuccessBrush,

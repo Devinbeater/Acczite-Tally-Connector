@@ -27,7 +27,10 @@ namespace Acczite20.Services.Reports
         public List<BSGroupModel> Liabilities { get; set; } = new();
         public decimal TotalAssets => Assets.Sum(a => a.TotalAmount);
         public decimal TotalLiabilities => Liabilities.Sum(l => l.TotalAmount);
+        // Assets must equal Liabilities + Equity. Non-zero difference = data gap.
         public decimal Difference => TotalAssets - TotalLiabilities;
+        public bool IsBalanced => Math.Abs(Difference) < 0.01m;
+        public DateTime AsOfDate { get; set; }
     }
 
     public class BalanceSheetService
@@ -41,64 +44,117 @@ namespace Acczite20.Services.Reports
 
         public async Task<BalanceSheetReportModel> GetBalanceSheetAsync(Guid orgId, DateTime toDate)
         {
-            var report = new BalanceSheetReportModel();
+            var report = new BalanceSheetReportModel { AsOfDate = toDate };
 
             var dbType = Services.SessionManager.Instance.SelectedDatabaseType;
             if (dbType == "MongoDB" || string.IsNullOrWhiteSpace(dbType))
-            {
                 return report;
-            }
 
-            // Fetch all ledger entry balances up to toDate
-            var entries = await _dbContext.LedgerEntries
-                .IgnoreQueryFilters()
-                .Where(e => e.OrganizationId == orgId && !e.IsDeleted &&
-                           e.Voucher.VoucherDate <= toDate)
-                .Include(e => e.Voucher)
-                .ToListAsync();
-
+            // ─── Step 1: Load all groups and classify by NatureOfGroup ───
+            // Tally propagates NatureOfGroup to ALL groups — use it, not hardcoded names.
             var groups = await _dbContext.AccountingGroups
                 .IgnoreQueryFilters()
                 .Where(g => g.OrganizationId == orgId && !g.IsDeleted)
                 .ToListAsync();
 
-            var assetGroups = new HashSet<string> { "Current Assets", "Fixed Assets", "Investments", "Suspense Account" };
-            var liabilityGroups = new HashSet<string> { "Current Liabilities", "Loans (Liability)", "Capital Account", "Reserves & Surplus" };
+            var assetGroupNames = groups
+                .Where(g => string.Equals(g.NatureOfGroup, "Assets", StringComparison.OrdinalIgnoreCase))
+                .Select(g => g.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            var allAssets = entries.Where(e => IsInGroup(e.LedgerGroup, assetGroups, groups));
-            var allLiabilities = entries.Where(e => IsInGroup(e.LedgerGroup, liabilityGroups, groups));
+            var liabilityGroupNames = groups
+                .Where(g => string.Equals(g.NatureOfGroup, "Liabilities", StringComparison.OrdinalIgnoreCase))
+                .Select(g => g.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            report.Assets = allAssets.GroupBy(e => e.LedgerGroup)
+            if (assetGroupNames.Count == 0 && liabilityGroupNames.Count == 0)
+                return report; // Master sync not done yet
+
+            // ─── Step 2: Load ledger opening balances ───
+            // Balance Sheet is cumulative — it MUST include opening balances from Tally.
+            // Tally opening balance convention: positive = debit (asset), negative = credit (liability).
+            var ledgerOpenings = await _dbContext.Ledgers
+                .IgnoreQueryFilters()
+                .Where(l => l.OrganizationId == orgId && !l.IsDeleted && l.IsActive)
+                .Select(l => new { l.Name, l.ParentGroup, l.OpeningBalance })
+                .ToDictionaryAsync(l => l.Name, l => l, StringComparer.OrdinalIgnoreCase);
+
+            // ─── Step 3: Aggregate transaction movements in SQL ───
+            // Net movement per ledger = SUM(Debit) - SUM(Credit) across all non-cancelled vouchers up to toDate.
+            var movements = await _dbContext.LedgerEntries
+                .IgnoreQueryFilters()
+                .Where(e => e.OrganizationId == orgId && !e.IsDeleted
+                         && !e.Voucher.IsDeleted && !e.Voucher.IsCancelled && !e.Voucher.IsOptional
+                         && e.Voucher.VoucherDate <= toDate)
+                .GroupBy(e => e.LedgerName)
+                .Select(g => new
+                {
+                    LedgerName = g.Key,
+                    TotalDebit = g.Sum(e => e.DebitAmount),
+                    TotalCredit = g.Sum(e => e.CreditAmount)
+                })
+                .ToDictionaryAsync(x => x.LedgerName, x => x, StringComparer.OrdinalIgnoreCase);
+
+            // ─── Step 4: Compute closing balance per ledger ───
+            // Closing = Opening + (TotalDebit - TotalCredit)
+            // Sign determines debit/credit nature — do not force-flip based on group type.
+            var ledgerBalances = ledgerOpenings.Values
+                .Select(l =>
+                {
+                    movements.TryGetValue(l.Name, out var mv);
+                    decimal netMovement = (mv?.TotalDebit ?? 0) - (mv?.TotalCredit ?? 0);
+                    decimal closingBalance = l.OpeningBalance + netMovement;
+                    return new
+                    {
+                        l.Name,
+                        l.ParentGroup,
+                        ClosingBalance = closingBalance
+                    };
+                })
+                .ToList();
+
+            // ─── Step 5: Classify and group ───
+            var assetLedgers = ledgerBalances
+                .Where(l => assetGroupNames.Contains(l.ParentGroup))
+                .Where(l => l.ClosingBalance != 0);
+
+            var liabilityLedgers = ledgerBalances
+                .Where(l => liabilityGroupNames.Contains(l.ParentGroup))
+                .Where(l => l.ClosingBalance != 0);
+
+            report.Assets = assetLedgers
+                .GroupBy(l => l.ParentGroup)
                 .Select(g => new BSGroupModel
                 {
                     GroupName = g.Key,
-                    TotalAmount = g.Sum(e => e.DebitAmount - e.CreditAmount),
-                    Ledgers = g.GroupBy(e => e.LedgerName)
-                               .Select(lg => new BSLedgerModel { LedgerName = lg.Key, Amount = lg.Sum(e => e.DebitAmount - e.CreditAmount) })
-                               .ToList()
-                }).ToList();
+                    // Assets have normal debit balance (positive = debit)
+                    TotalAmount = g.Sum(l => l.ClosingBalance),
+                    Ledgers = g.Select(l => new BSLedgerModel
+                    {
+                        LedgerName = l.Name,
+                        Amount = l.ClosingBalance
+                    }).OrderByDescending(l => Math.Abs(l.Amount)).ToList()
+                })
+                .OrderByDescending(g => g.TotalAmount)
+                .ToList();
 
-            report.Liabilities = allLiabilities.GroupBy(e => e.LedgerGroup)
+            report.Liabilities = liabilityLedgers
+                .GroupBy(l => l.ParentGroup)
                 .Select(g => new BSGroupModel
                 {
                     GroupName = g.Key,
-                    TotalAmount = g.Sum(e => e.CreditAmount - e.DebitAmount), // Liabilities are usually credit
-                    Ledgers = g.GroupBy(e => e.LedgerName)
-                               .Select(lg => new BSLedgerModel { LedgerName = lg.Key, Amount = lg.Sum(e => e.CreditAmount - e.DebitAmount) })
-                               .ToList()
-                }).ToList();
+                    // Liabilities have normal credit balance (stored as negative in Tally; show as absolute)
+                    TotalAmount = Math.Abs(g.Sum(l => l.ClosingBalance)),
+                    Ledgers = g.Select(l => new BSLedgerModel
+                    {
+                        LedgerName = l.Name,
+                        Amount = Math.Abs(l.ClosingBalance)
+                    }).OrderByDescending(l => l.Amount).ToList()
+                })
+                .OrderByDescending(g => g.TotalAmount)
+                .ToList();
 
             return report;
-        }
-
-        private bool IsInGroup(string groupName, HashSet<string> targetGroups, List<AccountingGroup> allGroups)
-        {
-            if (targetGroups.Contains(groupName)) return true;
-
-            var current = allGroups.FirstOrDefault(g => g.Name == groupName);
-            if (current == null || string.IsNullOrEmpty(current.Parent) || current.Parent == groupName) return false;
-
-            return IsInGroup(current.Parent, targetGroups, allGroups);
         }
     }
 }

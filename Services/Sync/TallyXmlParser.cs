@@ -66,6 +66,7 @@ namespace Acczite20.Services.Sync
 
         public Acczite20.Models.Voucher ParseVoucherEntity(XElement vNode, Guid orgId, Guid companyId)
         {
+            var now = DateTimeOffset.UtcNow;
             var voucher = new Acczite20.Models.Voucher
             {
                 Id = Guid.NewGuid(),
@@ -76,17 +77,25 @@ namespace Acczite20.Services.Sync
                                 ?? GetValue(vNode, "VOUCHERNUMBER")
                                 ?? Guid.NewGuid().ToString(),
                 VoucherNumber = GetValue(vNode, "VOUCHERNUMBER"),
+                ReferenceNumber = GetValue(vNode, "REFERENCE"),
                 Narration = GetValue(vNode, "NARRATION"),
                 VoucherTypeId = Guid.Empty, // Mapper will resolve via VOUCHERTYPENAME if needed
                 VoucherDate = DateTimeOffset.TryParseExact(GetValue(vNode, "DATE"), "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out var d) ? d : DateTimeOffset.UtcNow,
                 TotalAmount = 0,
                 IsCancelled = GetValue(vNode, "ISCANCELLED").Equals("Yes", StringComparison.OrdinalIgnoreCase),
                 IsOptional = GetValue(vNode, "ISOPTIONAL").Equals("Yes", StringComparison.OrdinalIgnoreCase),
-                LastModified = DateTimeOffset.UtcNow,
+                LastModified = now,
+                CreatedAt = now,
+                UpdatedAt = now,
                 LedgerEntries = new List<Acczite20.Models.LedgerEntry>(),
                 InventoryAllocations = new List<Acczite20.Models.InventoryAllocation>(),
                 GstBreakdowns = new List<Acczite20.Models.GstBreakdown>()
             };
+
+            if (string.IsNullOrWhiteSpace(voucher.ReferenceNumber))
+            {
+                voucher.ReferenceNumber = voucher.VoucherNumber;
+            }
 
             // Capture Voucher Type Name for ID resolution
             var vTypeName = GetValue(vNode, "VOUCHERTYPENAME");
@@ -96,6 +105,7 @@ namespace Acczite20.Services.Sync
             // AlterId for incremental sync
             var alterIdStr = GetValue(vNode, "ALTERID");
             voucher.AlterId = int.TryParse(alterIdStr, out var aid) ? aid : 0;
+            var inventoryKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             // 1. Ledger Entries
             var ledgerNodes = vNode.Descendants()
@@ -132,17 +142,7 @@ namespace Acczite20.Services.Sync
                     var stockItem = GetValue(iNode, "STOCKITEMNAME");
                     if (!string.IsNullOrWhiteSpace(stockItem))
                     {
-                        voucher.InventoryAllocations.Add(new Acczite20.Models.InventoryAllocation
-                        {
-                            Id = Guid.NewGuid(),
-                            OrganizationId = orgId,
-                            VoucherId = voucher.Id,
-                            StockItemName = stockItem,
-                            ActualQuantity = decimal.TryParse(GetValue(iNode, "ACTUALQTY").Split(' ')[0], out var aq) ? aq : 0,
-                            BilledQuantity = decimal.TryParse(GetValue(iNode, "BILLEDQTY").Split(' ')[0], out var bq) ? bq : 0,
-                            Rate = decimal.TryParse(GetValue(iNode, "RATE").Split('/')[0], out var rt) ? rt : 0,
-                            Amount = decimal.TryParse(GetValue(iNode, "AMOUNT"), out var ia) ? Math.Abs(ia) : 0
-                        });
+                        TryAddInventoryAllocation(voucher, inventoryKeys, iNode, stockItem, orgId);
                     }
                 }
 
@@ -179,6 +179,18 @@ namespace Acczite20.Services.Sync
                 }
             }
 
+            // Some voucher shapes expose inventory at the voucher root rather than under ledger lines.
+            foreach (var iNode in vNode.Descendants().Where(x =>
+                         x.Name.LocalName.Equals("ALLINVENTORYENTRIES.LIST", StringComparison.OrdinalIgnoreCase) ||
+                         x.Name.LocalName.Equals("INVENTORYENTRIES.LIST", StringComparison.OrdinalIgnoreCase)))
+            {
+                var stockItem = GetValue(iNode, "STOCKITEMNAME");
+                if (!string.IsNullOrWhiteSpace(stockItem))
+                {
+                    TryAddInventoryAllocation(voucher, inventoryKeys, iNode, stockItem, orgId);
+                }
+            }
+
             // --- VOUCHER INTEGRITY CHECK (Golden Rule) ---
             decimal totalDebit = voucher.LedgerEntries.Sum(e => e.DebitAmount);
             decimal totalCredit = voucher.LedgerEntries.Sum(e => e.CreditAmount);
@@ -192,6 +204,59 @@ namespace Acczite20.Services.Sync
 
             voucher.TotalAmount = totalCredit;
             return voucher;
+        }
+
+        private void TryAddInventoryAllocation(
+            Acczite20.Models.Voucher voucher,
+            HashSet<string> inventoryKeys,
+            XElement inventoryNode,
+            string stockItem,
+            Guid orgId)
+        {
+            var actualQuantity = ParseLeadingDecimal(GetValue(inventoryNode, "ACTUALQTY"));
+            var billedQuantity = ParseLeadingDecimal(GetValue(inventoryNode, "BILLEDQTY"));
+            var rate = ParseRate(GetValue(inventoryNode, "RATE"));
+            var amount = decimal.TryParse(GetValue(inventoryNode, "AMOUNT"), out var parsedAmount) ? Math.Abs(parsedAmount) : 0;
+
+            var key = $"{stockItem}|{actualQuantity}|{billedQuantity}|{rate}|{amount}";
+            if (!inventoryKeys.Add(key))
+            {
+                return;
+            }
+
+            voucher.InventoryAllocations.Add(new Acczite20.Models.InventoryAllocation
+            {
+                Id = Guid.NewGuid(),
+                OrganizationId = orgId,
+                VoucherId = voucher.Id,
+                StockItemName = stockItem,
+                ActualQuantity = actualQuantity,
+                BilledQuantity = billedQuantity,
+                Rate = rate,
+                Amount = amount
+            });
+        }
+
+        private static decimal ParseLeadingDecimal(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return 0;
+            }
+
+            var token = value.Split(' ')[0];
+            return decimal.TryParse(token, out var parsed) ? parsed : 0;
+        }
+
+        private static decimal ParseRate(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return 0;
+            }
+
+            var token = value.Split('/')[0];
+            return decimal.TryParse(token, out var parsed) ? parsed : 0;
         }
     }
 }

@@ -167,7 +167,23 @@ namespace Acczite20.Services.Reports
                 })
                 .ToDictionaryAsync(x => x.LedgerName, x => x, StringComparer.OrdinalIgnoreCase);
 
-            // ─── Step 4: Build flat ledger rows with normalized balances ───
+            // ─── Step 4: Pre-compute period opening balances in ONE query (not N queries) ───
+            // When fromDate is set, opening = Tally opening + net of all entries before fromDate.
+            // This MUST be a single aggregated query outside the ledger loop — not one query per ledger.
+            Dictionary<string, decimal>? priorNetByLedger = null;
+            if (fromDate.HasValue)
+            {
+                priorNetByLedger = await _context.LedgerEntries.IgnoreQueryFilters()
+                    .Include(e => e.Voucher)
+                    .Where(e => e.OrganizationId == orgId && !e.IsDeleted
+                             && e.Voucher != null && !e.Voucher.IsDeleted && !e.Voucher.IsCancelled && !e.Voucher.IsOptional
+                             && e.Voucher.VoucherDate < fromDate.Value)
+                    .GroupBy(e => e.LedgerName)
+                    .Select(g => new { LedgerName = g.Key, NetBalance = g.Sum(e => e.DebitAmount - e.CreditAmount) })
+                    .ToDictionaryAsync(x => x.LedgerName, x => x.NetBalance, StringComparer.OrdinalIgnoreCase);
+            }
+
+            // ─── Build flat ledger rows with normalized balances ───
             var allTbLedgers = new List<TrialBalanceLedger>();
 
             foreach (var l in ledgers)
@@ -184,19 +200,10 @@ namespace Acczite20.Services.Reports
                 // We keep this convention for correct ClosingBalance computation.
                 decimal openingBalance = l.OpeningBalance;
 
-                // If no date filter, use raw opening. If from date is set, 
-                // opening = ledger.OpeningBalance + all entries before fromDate
-                if (fromDate.HasValue)
+                if (fromDate.HasValue && priorNetByLedger != null)
                 {
-                    var priorEntries = await _context.LedgerEntries.IgnoreQueryFilters()
-                        .Include(e => e.Voucher)
-                        .Where(e => e.OrganizationId == orgId && !e.IsDeleted
-                                 && e.LedgerName == l.Name
-                                 && e.Voucher != null && !e.Voucher.IsDeleted && !e.Voucher.IsCancelled && !e.Voucher.IsOptional
-                                 && e.Voucher.VoucherDate < fromDate.Value)
-                        .SumAsync(e => e.DebitAmount - e.CreditAmount);
-
-                    openingBalance = l.OpeningBalance + priorEntries;
+                    priorNetByLedger.TryGetValue(l.Name, out var priorNet);
+                    openingBalance = l.OpeningBalance + priorNet;
                 }
 
                 var tbRow = new TrialBalanceLedger
@@ -349,10 +356,12 @@ namespace Acczite20.Services.Reports
         private int CalculateDepth(string groupName, List<AccountingGroup> allGroups)
         {
             int depth = 0;
-            var current = allGroups.FirstOrDefault(g => g.Name == groupName);
+            var current = allGroups.FirstOrDefault(g =>
+                string.Equals(g.Name, groupName, StringComparison.OrdinalIgnoreCase));
             while (current != null && !string.IsNullOrEmpty(current.Parent) && depth < 20)
             {
-                current = allGroups.FirstOrDefault(g => g.Name == current.Parent);
+                current = allGroups.FirstOrDefault(g =>
+                    string.Equals(g.Name, current.Parent, StringComparison.OrdinalIgnoreCase));
                 depth++;
             }
             return depth;

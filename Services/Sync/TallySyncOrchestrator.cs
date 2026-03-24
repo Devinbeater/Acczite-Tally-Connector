@@ -152,6 +152,7 @@ namespace Acczite20.Services.Sync
                 {
                     await _lockProvider.ReleaseLockAsync(lockKey);
                 }
+
             }
             else
             {
@@ -314,7 +315,12 @@ namespace Acczite20.Services.Sync
                 metadata.RecordsSyncedInLastRun = records;
                 metadata.LastModified = DateTimeOffset.UtcNow;
                 metadata.IsSyncRunning = false;
-                metadata.LastVoucherMasterId = lastMasterId ?? metadata.LastVoucherMasterId;
+                metadata.LastVoucherMasterId = lastMasterId switch
+                {
+                    null => metadata.LastVoucherMasterId,
+                    "" => null,
+                    _ => lastMasterId
+                };
                 
                 if (success)
                 {
@@ -365,6 +371,7 @@ namespace Acczite20.Services.Sync
                 {
                     _syncMonitor.AddLog($"Resolved open Tally company: {openCompany}", "SUCCESS", "TALLY");
                 }
+
             }
             else
             {
@@ -437,10 +444,10 @@ namespace Acczite20.Services.Sync
         private async Task SyncRangeAsync(Guid orgId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            int consumerCount = 1;
+            DateTimeOffset currentSyncFrom = from;
+            Guid companyId = Guid.Empty;
 
             // CHECKPOINT RESUME: Check if we have a saved progress for this range
-            DateTimeOffset currentSyncFrom = from;
             using (var scope = _scopeFactory.CreateScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -449,44 +456,133 @@ namespace Acczite20.Services.Sync
                 
                 if (meta != null && meta.LastSuccessfulSync.HasValue && meta.LastSuccessfulSync > from && meta.LastSuccessfulSync < to)
                 {
-                    currentSyncFrom = meta.LastSuccessfulSync.Value.AddDays(1);
+                    currentSyncFrom = meta.LastSuccessfulSync.Value.AddTicks(1);
                     _syncMonitor.AddLog($"⏮ Resuming Sync from Checkpoint: {currentSyncFrom:yyyy-MM-dd}", "INFO", "ORCHESTRATOR");
                 }
+
+                var company = await db.Companies.FirstOrDefaultAsync(c => c.OrganizationId == orgId, ct);
+                companyId = company?.Id ?? Guid.Empty;
             }
 
-            for (var chunkStart = currentSyncFrom; chunkStart <= to; chunkStart = chunkStart.AddDays(1))
+            if (companyId == Guid.Empty)
             {
-                var chunkEnd = chunkStart.AddDays(1).AddTicks(-1); // End of the day
-                if (chunkEnd > to) chunkEnd = to;
-
-                _syncMonitor.AddLog($"Processing Chunk: {chunkStart:yyyy-MM-dd} to {chunkEnd:yyyy-MM-dd}", "INFO", "VOUCHERS");
-
-                // Define high-throughput channel
-                var channel = Channel.CreateBounded<Voucher>(new BoundedChannelOptions(15000) 
-                { 
-                    FullMode = BoundedChannelFullMode.Wait,
-                    SingleReader = false, 
-                    SingleWriter = true 
-                });
-
-                // Start Producer: Tally XML Stream Reader (Discovery + Diff)
-                var producerTask = ProduceVouchersFromTallyAsync(channel.Writer, orgId, ct, chunkStart, chunkEnd);
-
-                // Start Consumers
-                var consumerTask = ConsumeVouchersAndBulkInsertAsync(orgId, channel.Reader, ct, sw);
-                var consumerTasks = new List<Task> { consumerTask };
-
-                await producerTask;
-                await Task.WhenAll(consumerTasks);
-
-                // --- SAVE CHECKPOINT AFTER EACH DAY ---
-                await UpdateSyncMetadataAsync(orgId, "Voucher", _syncMonitor.TotalRecordsSynced, true, null, chunkEnd);
-
-                await Task.Delay(300, ct); // Minimum throttling between batches
+                _syncMonitor.AddLog("No company record found in DB for this organization. Sync cannot continue.", "ERROR", "VOUCHERS");
+                return;
             }
+
+            if (currentSyncFrom > to)
+            {
+                _syncMonitor.AddLog("Requested range is already covered by the latest checkpoint.", "SUCCESS", "VOUCHERS");
+                return;
+            }
+
+            var progress = new VoucherSyncProgressAggregator();
+            var scheduler = new VoucherSyncChunkScheduler();
+            var executor = new TallyVoucherRequestExecutor(_tallyService, _xmlParser, scheduler);
+            var dbWriter = new VoucherSyncDbWriter(orgId, _scopeFactory, _syncMonitor, progress, sw);
+            var controller = new VoucherSyncController(scheduler, executor, dbWriter, progress, _syncMonitor);
+
+            await controller.RunAsync(
+                orgId,
+                companyId,
+                currentSyncFrom,
+                to,
+                (voucher, token) => PrepareVoucherForWriteAsync(orgId, companyId, voucher, token),
+                async (chunk, metrics, token) =>
+                {
+                    var snapshot = progress.Snapshot();
+                    var payloadMb = metrics.PayloadBytes <= 0 ? 0 : metrics.PayloadBytes / 1024d / 1024d;
+
+                    _syncMonitor.AddLog(
+                        $"Chunk complete: {chunk.Start:yyyy-MM-dd HH:mm} to {chunk.End:yyyy-MM-dd HH:mm} | parsed {metrics.FetchedCount:N0} | queued {metrics.EnqueuedCount:N0} | rejected {metrics.RejectedCount:N0} | {metrics.Elapsed.TotalSeconds:N1}s | {payloadMb:N1} MB | next window {scheduler.CurrentWindow.TotalHours:0.#}h.",
+                        "INFO",
+                        "VOUCHERS");
+
+                    _syncMonitor.SetStage(
+                        "Streaming vouchers",
+                        $"Fetched {snapshot.Fetched:N0}, saved {snapshot.Written:N0}. Completed chunk {chunk.Start:yyyy-MM-dd HH:mm} to {chunk.End:yyyy-MM-dd HH:mm}.",
+                        68,
+                        false);
+
+                    await UpdateSyncMetadataAsync(orgId, "Voucher", _syncMonitor.TotalRecordsSynced, true, null, chunk.End, string.Empty);
+                },
+                ct);
 
             // Verify and Sync Deletions
             await SyncDeletionsAsync(orgId, from, to, ct);
+        }
+
+        private async ValueTask<Voucher?> PrepareVoucherForWriteAsync(Guid orgId, Guid companyId, Voucher voucher, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (_cache == null)
+            {
+                throw new InvalidOperationException("Master data cache is not initialized for voucher validation.");
+            }
+
+            voucher.OrganizationId = orgId;
+            voucher.CompanyId = companyId;
+            voucher.ReferenceNumber = string.IsNullOrWhiteSpace(voucher.ReferenceNumber) ? voucher.VoucherNumber : voucher.ReferenceNumber;
+
+            var voucherTypeName = voucher.VoucherType?.Name ?? "Journal";
+            voucher.VoucherTypeId = _cache.GetVoucherTypeId(voucherTypeName);
+            if (voucher.VoucherTypeId == Guid.Empty && !string.Equals(voucherTypeName, "Journal", StringComparison.OrdinalIgnoreCase))
+            {
+                voucher.VoucherTypeId = _cache.GetVoucherTypeId("Journal");
+            }
+
+            if (voucher.VoucherTypeId == Guid.Empty)
+            {
+                await AddToDeadLetterAsync(
+                    orgId,
+                    companyId,
+                    voucher.TallyMasterId ?? string.Empty,
+                    $"Voucher type not found: {voucherTypeName}",
+                    $"<VOUCHER MASTERID=\"{voucher.TallyMasterId}\"><VOUCHERTYPENAME>{voucherTypeName}</VOUCHERTYPENAME></VOUCHER>");
+                return null;
+            }
+
+            foreach (var ledgerEntry in voucher.LedgerEntries)
+            {
+                if (_cache.GetLedgerId(ledgerEntry.LedgerName) != Guid.Empty)
+                {
+                    continue;
+                }
+
+                await AddToDeadLetterAsync(
+                    orgId,
+                    companyId,
+                    voucher.TallyMasterId ?? string.Empty,
+                    $"Ledger not found: {ledgerEntry.LedgerName}",
+                    $"<VOUCHER MASTERID=\"{voucher.TallyMasterId}\"><LEDGERNAME>{ledgerEntry.LedgerName}</LEDGERNAME></VOUCHER>");
+                return null;
+            }
+
+            var totalDebit = voucher.LedgerEntries.Sum(le => le.DebitAmount);
+            var totalCredit = voucher.LedgerEntries.Sum(le => le.CreditAmount);
+            if (!voucher.IsCancelled && Math.Abs(totalDebit - totalCredit) > 0.01m)
+            {
+                await AddToDeadLetterAsync(
+                    orgId,
+                    companyId,
+                    voucher.TallyMasterId ?? string.Empty,
+                    $"Double-entry mismatch: Debit {totalDebit} != Credit {totalCredit}",
+                    $"<VOUCHER MASTERID=\"{voucher.TallyMasterId}\"><VOUCHERNUMBER>{voucher.VoucherNumber}</VOUCHERNUMBER></VOUCHER>");
+                return null;
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            if (voucher.CreatedAt == default)
+            {
+                voucher.CreatedAt = now;
+            }
+
+            voucher.LastModified = now;
+            voucher.UpdatedAt = now;
+            voucher.SyncRunId = _currentRunId;
+
+            return voucher;
         }
 
         private async Task ProduceVouchersFromTallyAsync(ChannelWriter<Voucher> writer, Guid orgId, CancellationToken ct, DateTimeOffset? fromOverride = null, DateTimeOffset? toOverride = null)
@@ -1008,31 +1104,35 @@ namespace Acczite20.Services.Sync
                 
                 for (var chunkStart = fromDate; chunkStart <= toDate; chunkStart = chunkStart.AddDays(1))
                 {
-                    var chunkEnd = chunkStart.AddDays(1).AddDays(-1);
+                    var chunkEnd = chunkStart.AddDays(1).AddTicks(-1);
                     if (chunkEnd > toDate) chunkEnd = toDate;
 
                     int retryAttempts = 0;
                     bool chunkSuccess = false;
                     while (retryAttempts < 3 && !chunkSuccess)
                     {
-                        var res = await _tallyService.ExportCollectionXmlStreamAsync("AccziteVoucherDiscoveryCollection", chunkStart, chunkEnd, true);
-                        using (var stream = res.Stream)
+                        await using var lease = await _tallyService.OpenCollectionXmlStreamAsync(
+                            "AccziteVoucherDiscoveryCollection",
+                            chunkStart,
+                            chunkEnd,
+                            true,
+                            ct);
+
+                        if (lease != null)
                         {
-                            if (stream != null)
+                            chunkSuccess = true;
+                            using var reader = XmlReader.Create(lease.Stream, new XmlReaderSettings { Async = true, CheckCharacters = false });
+                            while (await reader.ReadAsync())
                             {
-                                chunkSuccess = true;
-                                using var reader = XmlReader.Create(stream, new XmlReaderSettings{ Async = true });
-                                while (await reader.ReadAsync())
+                                if (reader.NodeType == XmlNodeType.Element && string.Equals(reader.Name, "VOUCHER", StringComparison.OrdinalIgnoreCase))
                                 {
-                                    if (reader.NodeType == XmlNodeType.Element && string.Equals(reader.Name, "VOUCHER", StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        var element = (XElement)XNode.ReadFrom(reader);
-                                        var id = element.Element("MASTERID")?.Value ?? element.Attribute("REMOTEID")?.Value;
-                                        if (!string.IsNullOrEmpty(id)) tallyIds.Add(id);
-                                    }
+                                    var element = (XElement)XNode.ReadFrom(reader);
+                                    var id = element.Element("MASTERID")?.Value ?? element.Attribute("REMOTEID")?.Value;
+                                    if (!string.IsNullOrEmpty(id)) tallyIds.Add(id);
                                 }
                             }
                         }
+
                         if (!chunkSuccess) 
                         {
                             retryAttempts++;

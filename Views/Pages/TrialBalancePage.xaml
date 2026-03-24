@@ -58,9 +58,9 @@
 
         <!-- Trial Balance Hierarchy Body -->
         <Border Grid.Row="1" Background="{StaticResource BaseWhite}" CornerRadius="8" Effect="{StaticResource CardShadow}" ClipToBounds="True">
-            <DataGrid x:Name="TrialBalanceGrid" 
-                      ItemsSource="{Binding FlattenedRows}" 
-                      AutoGenerateColumns="False" 
+            <DataGrid x:Name="TrialBalanceGrid"
+                      ItemsSource="{Binding FlattenedRows}"
+                      AutoGenerateColumns="False"
                       IsReadOnly="True"
                       SelectionMode="Single"
                       HeadersVisibility="Column"
@@ -68,7 +68,8 @@
                       HorizontalGridLinesBrush="#E5E7EB"
                       BorderThickness="0"
                       Background="Transparent"
-                      RowHeight="36">
+                      RowHeight="36"
+                      MouseDoubleClick="TrialBalanceGrid_MouseDoubleClick">
                 
                 <DataGrid.Resources>
                     <Style TargetType="DataGridColumnHeader">

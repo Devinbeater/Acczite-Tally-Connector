@@ -126,7 +126,7 @@ namespace Acczite20.Views.Pages
                         EntityName = meta.EntityType,
                         LastSync = meta.LastSuccessfulSync?.DateTime,
                         RecordsSynced = meta.RecordsSyncedInLastRun,
-                        Status = meta.IsSyncRunning ? "RUNNING" : (string.IsNullOrEmpty(meta.LastError) ? "SUCCESS" : "ERROR")
+                        SyncStatus = meta.IsSyncRunning ? "RUNNING" : (string.IsNullOrEmpty(meta.LastError) ? "SUCCESS" : "ERROR")
                     });
                     total += meta.RecordsSyncedInLastRun;
                     if (latest == null || meta.LastSuccessfulSync > latest) latest = meta.LastSuccessfulSync;

@@ -340,17 +340,51 @@ namespace Acczite20.Services.Sync
             try
             {
                 string? response = null;
-                for (int i = 1; i <= 3; i++) // Exponential Backoff Retry Pattern
+                // Each attempt uses a 10-minute export timeout. If it still fails (e.g. Tally crash),
+                // we check whether Tally is actually alive before retrying, and wait 30s/60s.
+                int[] retryDelaysMs = { 30_000, 60_000 };
+                for (int i = 1; i <= 3; i++)
                 {
+                    // Respect the circuit breaker — if Tally is repeatedly failing, don't send more requests.
+                    if (TallyXmlService.IsCircuitOpen())
+                    {
+                        var remaining = TallyXmlService.CircuitCooldownRemaining();
+                        _syncMonitor.AddLog($"Circuit breaker is OPEN. Waiting {remaining}s before ledger fetch attempt {i}...", "WARNING", "MASTERS");
+                        await Task.Delay(remaining * 1000);
+                    }
+
                     try
                     {
+                        _syncMonitor.AddLog($"Fetching ledgers from Tally (attempt {i}/3)...", "INFO", "MASTERS");
                         response = await _xmlService.ExportCollectionXmlAsync("List of Ledgers", isCollection: true);
                         if (!string.IsNullOrWhiteSpace(response)) break;
+
+                        // Tally returned empty (not an exception). Health-check it before retrying.
+                        if (i < 3)
+                        {
+                            var waitSec = retryDelaysMs[i - 1] / 1000;
+                            _syncMonitor.AddLog($"Tally returned empty ledger response. Checking Tally health...", "WARNING", "MASTERS");
+                            bool alive = await _xmlService.IsTallyRunningAsync();
+                            if (!alive)
+                            {
+                                _syncMonitor.AddLog($"Tally is NOT responding. Waiting {waitSec}s for recovery before retry...", "WARNING", "MASTERS");
+                            }
+                            else
+                            {
+                                _syncMonitor.AddLog($"Tally is alive but returned empty data. Waiting {waitSec}s before retry...", "WARNING", "MASTERS");
+                            }
+                            await Task.Delay(retryDelaysMs[i - 1]);
+                        }
                     }
                     catch (Exception ex) when (i < 3)
                     {
-                        _logger.LogWarning($"Ledger fetch attempt {i} failed: {ex.Message}. Retrying in {i * 2}s...");
-                        await Task.Delay(i * 2000);
+                        var waitSec = retryDelaysMs[i - 1] / 1000;
+                        _logger.LogWarning($"Ledger fetch attempt {i} failed: {ex.Message}. Checking Tally health...");
+                        bool alive = await _xmlService.IsTallyRunningAsync();
+                        _syncMonitor.AddLog(
+                            $"Ledger fetch failed. Tally is {(alive ? "alive but slow" : "NOT responding")}. " +
+                            $"Waiting {waitSec}s before retry...", "WARNING", "MASTERS");
+                        await Task.Delay(retryDelaysMs[i - 1]);
                     }
                 }
 
@@ -431,14 +465,13 @@ namespace Acczite20.Services.Sync
                              throw new InvalidOperationException($"Referential Integrity Breach: Ledger '{ledger.Name}' references a Group '{ledger.ParentGroup}' that was not found in Tally. Sync aborted to prevent orphaned entries.");
                         }
 
-                        // AUDITOR-GRADE RECONCILIATION: STOP MASKING ERRORS (Gap #1)
-                        // If Tally balance differs by more than 0.01, we DO NOT patch. We fail.
-                        // This forces the system to address missing/corrupt vouchers instead of hiding the drift.
+                        // Opening balance changed in Tally (year-end closing, corrections, etc.)
+                        // Log the drift for audit trail and update to match Tally â Tally is source of truth.
                         if (Math.Abs(existing.OpeningBalance - ledger.OpeningBalance) > 0.01m)
                         {
-                            _syncMonitor.AddLog($"âŒ AUDIT FAIL: Ledger '{name}' balance mismatch (Local: {existing.OpeningBalance:N2} vs Tally: {ledger.OpeningBalance:N2})", "ERROR", "INTEGRITY");
-                            _logger.LogError($"Financial Discrepancy Found in Ledger '{name}'. Local: {existing.OpeningBalance} | Tally: {ledger.OpeningBalance}.");
-                            throw new InvalidOperationException($"Financial Drift Detected in Master '{name}'. Reconciliation failed. Action Required: Trigger a Full Voucher Re-Sync to resolve underlying transaction mismatches.");
+                            _syncMonitor.AddLog($"⚠ Balance updated: '{name}' {existing.OpeningBalance:N2} → {ledger.OpeningBalance:N2} (Tally is source of truth)", "WARNING", "INTEGRITY");
+                            _logger.LogWarning($"Opening balance changed for ledger '{name}': {existing.OpeningBalance} → {ledger.OpeningBalance}");
+                            existing.OpeningBalance = ledger.OpeningBalance;
                         }
                     }
                     else

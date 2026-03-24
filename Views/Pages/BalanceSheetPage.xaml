@@ -9,6 +9,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- Header -->
@@ -94,5 +95,119 @@
                 </DockPanel>
             </Border>
         </Grid>
+
+        <!-- Financial Health Status Bar + Diagnostics -->
+        <StackPanel Grid.Row="2" Margin="0,12,0,0">
+
+            <!-- Status row -->
+            <Border x:Name="HealthStatusBar" CornerRadius="8" Padding="16,10">
+                <DockPanel>
+                    <Ellipse x:Name="HealthDot" Width="12" Height="12" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBlock x:Name="TxtHealthLabel" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                    <TextBlock x:Name="TxtHealthDetail" VerticalAlignment="Center" Opacity="0.8"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <TextBlock x:Name="TxtHealthDiff" FontWeight="Bold" Margin="0,0,16,0"/>
+                        <TextBlock x:Name="TxtLastVerified" Opacity="0.6" FontSize="11"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- Drill-down diagnostics — shown only when Red/Yellow -->
+            <Border x:Name="DiagnosticsPanel" Visibility="Collapsed"
+                    Background="#FFF8F8" BorderBrush="#FFCCCC" BorderThickness="1"
+                    CornerRadius="8" Padding="16,12" Margin="0,6,0,0">
+                <StackPanel>
+                    <TextBlock Text="Diagnostics" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,8" Foreground="#B91C1C"/>
+
+                    <!-- Summary diagnostics -->
+                    <ItemsControl x:Name="DiagnosticsList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,3,0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="16"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center"
+                                             Fill="{Binding SeverityColor}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Description}"
+                                               TextWrapping="Wrap" FontSize="12" Margin="6,0,0,0"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Top unbalanced vouchers sub-table (hidden when empty) -->
+                    <Border x:Name="UnbalancedVouchersPanel" Visibility="Collapsed" Margin="0,10,0,0">
+                        <StackPanel>
+                            <TextBlock Text="Top Unbalanced Vouchers" FontWeight="SemiBold" FontSize="12"
+                                       Foreground="#B91C1C" Margin="0,0,0,6"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2*"/>
+                                    <ColumnDefinition Width="1.5*"/>
+                                    <ColumnDefinition Width="1.5*"/>
+                                    <ColumnDefinition Width="1.5*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Voucher No." FontWeight="SemiBold" FontSize="11" Foreground="#6B7280"/>
+                                <TextBlock Grid.Column="1" Text="Date" FontWeight="SemiBold" FontSize="11" Foreground="#6B7280"/>
+                                <TextBlock Grid.Column="2" Text="Type" FontWeight="SemiBold" FontSize="11" Foreground="#6B7280"/>
+                                <TextBlock Grid.Column="3" Text="Imbalance" FontWeight="SemiBold" FontSize="11" Foreground="#6B7280" HorizontalAlignment="Right"/>
+                            </Grid>
+                            <ItemsControl x:Name="UnbalancedVouchersList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,2,0,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="2*"/>
+                                                <ColumnDefinition Width="1.5*"/>
+                                                <ColumnDefinition Width="1.5*"/>
+                                                <ColumnDefinition Width="1.5*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding VoucherNumber}" FontSize="12"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding VoucherDate, StringFormat=dd-MMM-yy}" FontSize="12"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding VoucherType}" FontSize="12"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding Imbalance, StringFormat=N2}"
+                                                       FontSize="12" HorizontalAlignment="Right" Foreground="#DC2626"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Orphan ledgers sub-table (hidden when empty) -->
+                    <Border x:Name="OrphanLedgersPanel" Visibility="Collapsed" Margin="0,10,0,0">
+                        <StackPanel>
+                            <TextBlock Text="Unclassified Ledgers (excluded from reports)" FontWeight="SemiBold" FontSize="12"
+                                       Foreground="#B45309" Margin="0,0,0,6"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Ledger" FontWeight="SemiBold" FontSize="11" Foreground="#6B7280"/>
+                                <TextBlock Grid.Column="1" Text="Parent Group" FontWeight="SemiBold" FontSize="11" Foreground="#6B7280"/>
+                            </Grid>
+                            <ItemsControl x:Name="OrphanLedgersList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,2,0,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding LedgerName}" FontSize="12"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding ParentGroup}" FontSize="12" Foreground="#6B7280"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
     </Grid>
 </Page>

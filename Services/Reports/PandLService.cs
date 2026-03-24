@@ -28,6 +28,8 @@ namespace Acczite20.Services.Reports
         public decimal TotalIncome => Incomes.Sum(i => i.TotalAmount);
         public decimal TotalExpense => Expenses.Sum(e => e.TotalAmount);
         public decimal NetProfit => TotalIncome - TotalExpense;
+        public DateTime FromDate { get; set; }
+        public DateTime ToDate { get; set; }
     }
 
     public class PandLService
@@ -41,65 +43,88 @@ namespace Acczite20.Services.Reports
 
         public async Task<PandLReportModel> GetPandLReportAsync(Guid orgId, DateTime fromDate, DateTime toDate)
         {
-            var report = new PandLReportModel();
+            var report = new PandLReportModel { FromDate = fromDate, ToDate = toDate };
 
             var dbType = Services.SessionManager.Instance.SelectedDatabaseType;
             if (dbType == "MongoDB" || string.IsNullOrWhiteSpace(dbType))
-            {
                 return report;
-            }
 
-            // Fetch all ledger entries in range
-            var entries = await _dbContext.LedgerEntries
-                .IgnoreQueryFilters()
-                .Where(e => e.OrganizationId == orgId && !e.IsDeleted &&
-                           e.Voucher.VoucherDate >= fromDate && e.Voucher.VoucherDate <= toDate)
-                .Include(e => e.Voucher)
-                .ToListAsync();
-
+            // ─── Step 1: Load accounting groups and classify by NatureOfGroup ───
+            // NatureOfGroup is propagated by Tally to every group including sub-groups,
+            // so this correctly classifies all user-defined custom groups without hardcoding.
             var groups = await _dbContext.AccountingGroups
                 .IgnoreQueryFilters()
                 .Where(g => g.OrganizationId == orgId && !g.IsDeleted)
                 .ToListAsync();
 
-            var incomeGroups = new HashSet<string> { "Sales Accounts", "Direct Incomes", "Indirect Incomes" };
-            var expenseGroups = new HashSet<string> { "Purchase Accounts", "Direct Expenses", "Indirect Expenses" };
+            var incomeGroupNames = groups
+                .Where(g => string.Equals(g.NatureOfGroup, "Income", StringComparison.OrdinalIgnoreCase))
+                .Select(g => g.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            // Find all sub-groups for each primary group
-            var allIncomes = entries.Where(e => IsInGroup(e.LedgerGroup, incomeGroups, groups));
-            var allExpenses = entries.Where(e => IsInGroup(e.LedgerGroup, expenseGroups, groups));
+            var expenseGroupNames = groups
+                .Where(g => string.Equals(g.NatureOfGroup, "Expenditure", StringComparison.OrdinalIgnoreCase))
+                .Select(g => g.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            report.Incomes = allIncomes.GroupBy(e => e.LedgerGroup)
+            if (incomeGroupNames.Count == 0 && expenseGroupNames.Count == 0)
+                return report; // Master sync not done yet
+
+            // ─── Step 2: Aggregate in SQL — never load raw rows into memory ───
+            // Group by (LedgerGroup, LedgerName) so the DB does the heavy lifting.
+            // Exclude cancelled and optional vouchers — they must not affect P&L.
+            var aggregated = await _dbContext.LedgerEntries
+                .IgnoreQueryFilters()
+                .Where(e => e.OrganizationId == orgId && !e.IsDeleted
+                         && !e.Voucher.IsDeleted && !e.Voucher.IsCancelled && !e.Voucher.IsOptional
+                         && e.Voucher.VoucherDate >= fromDate && e.Voucher.VoucherDate <= toDate)
+                .GroupBy(e => new { e.LedgerGroup, e.LedgerName })
+                .Select(g => new
+                {
+                    LedgerGroup = g.Key.LedgerGroup,
+                    LedgerName = g.Key.LedgerName,
+                    TotalDebit = g.Sum(e => e.DebitAmount),
+                    TotalCredit = g.Sum(e => e.CreditAmount)
+                })
+                .ToListAsync();
+
+            // ─── Step 3: Classify in memory against the resolved group sets ───
+            var incomeRows = aggregated.Where(e => incomeGroupNames.Contains(e.LedgerGroup));
+            var expenseRows = aggregated.Where(e => expenseGroupNames.Contains(e.LedgerGroup));
+
+            // Income: Credit > Debit = positive income (Credit minus Debit)
+            report.Incomes = incomeRows
+                .GroupBy(e => e.LedgerGroup)
                 .Select(g => new PLGroupModel
                 {
                     GroupName = g.Key,
-                    TotalAmount = g.Sum(e => (e.CreditAmount - e.DebitAmount)), // Credit is income
-                    Ledgers = g.GroupBy(e => e.LedgerName)
-                               .Select(lg => new PLLedgerModel { LedgerName = lg.Key, Amount = lg.Sum(e => (e.CreditAmount - e.DebitAmount)) })
-                               .ToList()
-                }).ToList();
+                    TotalAmount = g.Sum(e => e.TotalCredit - e.TotalDebit),
+                    Ledgers = g.Select(e => new PLLedgerModel
+                    {
+                        LedgerName = e.LedgerName,
+                        Amount = e.TotalCredit - e.TotalDebit
+                    }).OrderByDescending(l => l.Amount).ToList()
+                })
+                .OrderByDescending(g => g.TotalAmount)
+                .ToList();
 
-            report.Expenses = allExpenses.GroupBy(e => e.LedgerGroup)
+            // Expenses: Debit > Credit = positive expense (Debit minus Credit)
+            report.Expenses = expenseRows
+                .GroupBy(e => e.LedgerGroup)
                 .Select(g => new PLGroupModel
                 {
                     GroupName = g.Key,
-                    TotalAmount = g.Sum(e => (e.DebitAmount - e.CreditAmount)), // Debit is expense
-                    Ledgers = g.GroupBy(e => e.LedgerName)
-                               .Select(lg => new PLLedgerModel { LedgerName = lg.Key, Amount = lg.Sum(e => (e.DebitAmount - e.CreditAmount)) })
-                               .ToList()
-                }).ToList();
+                    TotalAmount = g.Sum(e => e.TotalDebit - e.TotalCredit),
+                    Ledgers = g.Select(e => new PLLedgerModel
+                    {
+                        LedgerName = e.LedgerName,
+                        Amount = e.TotalDebit - e.TotalCredit
+                    }).OrderByDescending(l => l.Amount).ToList()
+                })
+                .OrderByDescending(g => g.TotalAmount)
+                .ToList();
 
             return report;
-        }
-
-        private bool IsInGroup(string groupName, HashSet<string> targetGroups, List<AccountingGroup> allGroups)
-        {
-            if (targetGroups.Contains(groupName)) return true;
-
-            var current = allGroups.FirstOrDefault(g => g.Name == groupName);
-            if (current == null || string.IsNullOrEmpty(current.Parent) || current.Parent == groupName) return false;
-
-            return IsInGroup(current.Parent, targetGroups, allGroups);
         }
     }
 }

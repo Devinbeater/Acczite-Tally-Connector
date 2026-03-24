@@ -31,7 +31,7 @@ namespace Acczite20.Views.Pages
             InitializeComponent();
             _selectedTableNames = selectedTableNames;
             _navigationService = navigationService;
-            _viewModel = new TallySyncViewModel();
+            var tallyService = ((App)Application.Current).ServiceProvider.GetRequiredService<TallyXmlService>(); _viewModel = new TallySyncViewModel(tallyService);
             DataContext = _viewModel;
 
             // Initialize filtering for Tally collections

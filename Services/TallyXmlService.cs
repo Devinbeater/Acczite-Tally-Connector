@@ -4,8 +4,10 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using Acczite20.Services.Sync;
 
 namespace Acczite20.Services
 {
@@ -28,22 +30,76 @@ namespace Acczite20.Services
     {
         private readonly HttpClient _httpClient;
 
-        // Tally's XML server is single-threaded. Concurrent or rapid-fire requests
-        // cause it to queue up responses, run out of memory, and crash.
-        // This gate ensures: (1) only one request is in-flight at a time,
-        // (2) a minimum inter-request gap is enforced so Tally can breathe.
+        // Separate HttpClient for large master/voucher exports — Tally can take several minutes
+        // to serialize thousands of ledgers or vouchers to XML. The default 30s check timeout
+        // would fire mid-export, causing the app to retry while Tally is still busy, leading
+        // to memory exhaustion and a Tally crash.
+        private readonly HttpClient _exportHttpClient;
+
+        // ── Request Gate ───────────────────────────────────────────────────────────
+        // Tally's XML server is single-threaded. One request at a time.
         private static readonly System.Threading.SemaphoreSlim _tallyGate = new(1, 1);
         private static DateTime _lastRequestCompletedAt = DateTime.MinValue;
-        private const int MinInterRequestDelayMs = 800; // Tally needs ~500ms to clean up between requests
+
+        // Exponential backoff: delay = BaseDelayMs × 2^failures, capped at MaxDelayMs.
+        // This slows the system geometrically as errors accumulate, before the circuit opens.
+        //   0 failures → 1500ms
+        //   1 failure  → 3000ms
+        //   2 failures → 6000ms (capped)
+        //   3 failures → circuit opens
+        private const int BaseDelayMs   = 1500;
+        private const int MaxDelayMs    = 30_000; // Tally can need 20-60s to recover after a crash
+        // Stream exports are the heaviest operation — add extra headroom on top of the backoff.
+        private const int StreamExtraCostMs = 1000;
+
+        // ── State-Machine Circuit Breaker ──────────────────────────────────────────
+        //
+        //   Closed ──(3 weighted failures)──► Open ──(180s)──► HalfOpen
+        //                                                           │
+        //                                                     1 probe request
+        //                                                     ┌────┴────┐
+        //                                                  success    failure
+        //                                                     │          │
+        //                                                  Warming    Open (reset timer)
+        //                                                     │
+        //                                           3 consecutive successes
+        //                                                     │
+        //                                                   Closed
+        //
+        // Failure weights (not all failures are equal):
+        //   Empty response             → +1  (Tally struggling but alive)
+        //   Timeout (TaskCanceled)     → +2  (Tally busy, might be unresponsive)
+        //   Connection refused         → +CircuitBreakerThreshold (open immediately)
+        //   Slow response (>5s)        → +1  (pre-throttle before hard failure)
+        //
+        // All state is static — process-wide, shared by every TallyXmlService instance.
+        private enum CircuitState { Closed, Open, HalfOpen, Warming }
+        private static CircuitState _circuitState       = CircuitState.Closed;
+        private static int  _consecutiveFailures        = 0;
+        private static DateTime _circuitOpenedAt        = DateTime.MinValue;
+        private static bool _probeInFlight              = false;
+        private static int  _warmingSuccesses           = 0;
+
+        private const int CircuitBreakerThreshold  = 3;    // weighted failure score to open
+        private const int CircuitCooldownSeconds   = 180;  // Open → HalfOpen after 3 minutes
+        private const int WarmingRequiredSuccesses = 3;    // successes to graduate from Warming → Closed
+        private const int SlowResponseThresholdMs  = 5000; // responses slower than this count as soft failure
+
         private readonly SyncStateMonitor? _syncMonitor;
 
         public TallyXmlService(SyncStateMonitor? syncMonitor = null)
         {
+            // Quick check client — 30s is plenty for status probes and small requests.
             _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+
+            // Export client — large company with thousands of ledgers or months of vouchers
+            // can take 3-5 minutes for Tally to serialize. We NEVER want to time out mid-export.
+            _exportHttpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+
             _syncMonitor = syncMonitor;
         }
 
-        private string TallyUrl => $"http://localhost:{SessionManager.Instance.TallyXmlPort}";
+        private string TallyUrl => $"http://127.0.0.1:{SessionManager.Instance.TallyXmlPort}";
 
         // ════════════════════════════════════════════════════
         //  1. DUAL-MODE DETECTION (XML → ODBC fallover)
@@ -94,7 +150,7 @@ namespace Acczite20.Services
         {
             try
             {
-                var xml = await SendEnvelopeAsync(BuildEnvelope("List of Companies"));
+                var xml = await SendEnvelopeAsync(@"<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Data</TYPE><ID>List of Companies</ID></HEADER><BODY><DESC></DESC></BODY></ENVELOPE>");
                 return !string.IsNullOrWhiteSpace(xml);
             }
             catch { return false; }
@@ -397,7 +453,8 @@ namespace Acczite20.Services
             // Persistence for Debug
             try { System.IO.File.WriteAllText("tally_master_request.xml", envelope); } catch {}
 
-            return await SendEnvelopeAsync(envelope);
+            // Use the 10-minute export client — master collections (especially ledgers) can be large.
+            return await SendExportEnvelopeAsync(envelope);
         }
 
         public async Task<(System.IO.Stream? Stream, long Size)> ExportCollectionXmlStreamAsync(string collectionOrReport, DateTimeOffset? fromDate = null, DateTimeOffset? toDate = null, bool isCollection = true)
@@ -451,34 +508,195 @@ namespace Acczite20.Services
   </BODY>
 </ENVELOPE>";
             }
+            if (IsCircuitOpen())
+            {
+                _syncMonitor?.AddLog(
+                    $"Circuit {_circuitState} ({CircuitCooldownRemaining()}s remaining). Stream blocked.",
+                    "WARNING", "CIRCUIT");
+                return (null, 0);
+            }
+
+            if (_circuitState == CircuitState.HalfOpen && !TryBeginProbe()) return (null, 0);
+
             await _tallyGate.WaitAsync();
             try
             {
-                var msSinceLastRequest = (DateTime.UtcNow - _lastRequestCompletedAt).TotalMilliseconds;
-                if (msSinceLastRequest < MinInterRequestDelayMs)
-                    await Task.Delay((int)(MinInterRequestDelayMs - msSinceLastRequest));
+                // Stream requests carry an extra cost (StreamExtraCostMs) on top of adaptive backoff
+                // because they are the heaviest operation — a single day-chunk can be 10+ MB.
+                var gap   = (DateTime.UtcNow - _lastRequestCompletedAt).TotalMilliseconds;
+                var delay = CurrentDelayMs(isStream: true);
+                if (gap < delay) await Task.Delay((int)(delay - gap));
 
                 System.IO.File.WriteAllText("tally_request_stream.xml", envelope);
 
-                var content = new StringContent(envelope, Encoding.UTF8, "application/xml");
-                var response = await _httpClient.PostAsync(TallyUrl, content);
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var content  = new StringContent(envelope, Encoding.UTF8, "application/xml");
+                var response = await _exportHttpClient.PostAsync(TallyUrl, content);
+                sw.Stop();
                 _lastRequestCompletedAt = DateTime.UtcNow;
 
                 if (response.IsSuccessStatusCode)
                 {
+                    RecordResponseTime(sw.Elapsed);
+                    RecordSuccess();
                     var bytes = await response.Content.ReadAsByteArrayAsync();
                     return (new System.IO.MemoryStream(bytes), bytes.Length);
                 }
+
+                RecordFailureWeighted(1);
             }
             catch (Exception ex)
             {
-                _syncMonitor?.AddLog($"Tally Stream Failure: {ex.Message}", "ERROR", "TALLY");
+                RecordException(ex);
             }
             finally
             {
                 _tallyGate.Release();
             }
             return (null, 0);
+        }
+
+        public async Task<TallyXmlStreamLease?> OpenCollectionXmlStreamAsync(
+            string collectionOrReport,
+            DateTimeOffset? fromDate = null,
+            DateTimeOffset? toDate = null,
+            bool isCollection = true,
+            CancellationToken ct = default)
+        {
+            var from = (fromDate ?? DateTimeOffset.Now.AddDays(-1)).ToString("yyyyMMdd");
+            var to = (toDate ?? DateTimeOffset.Now).ToString("yyyyMMdd");
+
+            string envelope;
+            if (isCollection)
+            {
+                var collectionTdl = GetSingleCollectionTdl(collectionOrReport);
+                envelope = $@"
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>{collectionOrReport}</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+        {GetStaticVariablesXml(from, to)}
+        <TDL>
+          <TDLMESSAGE>
+            {collectionTdl}
+            <SYSTEM TYPE=""Formulae"" NAME=""AccziteDateFilter"">
+              $$IsBetween:$Date:##SVFROMDATE:##SVTODATE
+            </SYSTEM>
+          </TDLMESSAGE>
+        </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>";
+            }
+            else
+            {
+                envelope = $@"
+<ENVELOPE>
+  <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+  <BODY>
+    <EXPORTDATA>
+      <REQUESTDESC>
+        {GetStaticVariablesXml(from, to)}
+        <REPORTNAME>{collectionOrReport}</REPORTNAME>
+      </REQUESTDESC>
+    </EXPORTDATA>
+  </BODY>
+</ENVELOPE>";
+            }
+
+            if (IsCircuitOpen())
+            {
+                _syncMonitor?.AddLog(
+                    $"Circuit breaker {_circuitState} ({CircuitCooldownRemaining()}s remaining). Stream export blocked.",
+                    "WARNING",
+                    "CIRCUIT");
+                return null;
+            }
+
+            bool isProbe = (_circuitState == CircuitState.HalfOpen);
+            if (isProbe && !TryBeginProbe())
+            {
+                return null;
+            }
+
+            bool releaseGate = true;
+            HttpResponseMessage? response = null;
+
+            _syncMonitor?.AddLog("Waiting for Tally Gate (stream)...", "DEBUG", "TALLY");
+            await _tallyGate.WaitAsync(ct);
+
+            try
+            {
+                var adaptiveDelay = CurrentDelayMs(isStream: true);
+                var msSinceLastRequest = (DateTime.UtcNow - _lastRequestCompletedAt).TotalMilliseconds;
+                if (msSinceLastRequest < adaptiveDelay)
+                {
+                    await Task.Delay((int)(adaptiveDelay - msSinceLastRequest), ct);
+                }
+
+                System.IO.File.WriteAllText("tally_request_stream.xml", envelope);
+
+                using var request = new HttpRequestMessage(HttpMethod.Post, TallyUrl)
+                {
+                    Content = new StringContent(envelope, Encoding.UTF8, "application/xml")
+                };
+
+                response = await _exportHttpClient.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    ct);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    RecordFailureWeighted(1);
+                    _syncMonitor?.AddLog($"Tally stream request failed with status {(int)response.StatusCode}.", "ERROR", "TALLY");
+                    response.Dispose();
+                    response = null;
+                    return null;
+                }
+
+                var stream = await response.Content.ReadAsStreamAsync(ct);
+                RecordSuccess();
+
+                releaseGate = false;
+                return new TallyXmlStreamLease(
+                    stream,
+                    response.Content.Headers.ContentLength,
+                    async () =>
+                    {
+                        try
+                        {
+                            await stream.DisposeAsync();
+                        }
+                        finally
+                        {
+                            response.Dispose();
+                            _lastRequestCompletedAt = DateTime.UtcNow;
+                            _tallyGate.Release();
+                            _syncMonitor?.AddLog("Released Tally Gate (stream).", "DEBUG", "TALLY");
+                        }
+                    });
+            }
+            catch (Exception ex)
+            {
+                RecordException(ex);
+                return null;
+            }
+            finally
+            {
+                if (releaseGate)
+                {
+                    response?.Dispose();
+                    _lastRequestCompletedAt = DateTime.UtcNow;
+                    _tallyGate.Release();
+                    _syncMonitor?.AddLog("Released Tally Gate (stream).", "DEBUG", "TALLY");
+                }
+            }
         }
 
         /// <summary>
@@ -523,6 +741,13 @@ namespace Acczite20.Services
               <FETCH>MASTERID, ALTERID, DATE, VOUCHERNUMBER</FETCH>
             </COLLECTION>",
 
+            "AccziteVoucherPipeline" => @"
+            <COLLECTION NAME=""AccziteVoucherPipeline"" ISMODIFY=""No"">
+              <TYPE>Voucher</TYPE>
+              <FILTER>AccziteDateFilter</FILTER>
+              <FETCH>MASTERID, ALTERID, DATE, VOUCHERNUMBER, REFERENCE, VOUCHERTYPENAME, NARRATION, ISCANCELLED, ISOPTIONAL, ALLLEDGERENTRIES.*, ALLINVENTORYENTRIES.*, INVENTORYALLOCATIONS.*, TAXCLASSIFICATIONDETAILS.*</FETCH>
+            </COLLECTION>",
+
             // Fallback: request the named collection without a FETCH restriction
             _ => $@"
             <COLLECTION NAME=""{collectionName}"" ISMODIFY=""No"">
@@ -533,7 +758,12 @@ namespace Acczite20.Services
 
         private async Task<bool> HasLoadedCompanyAsync()
         {
-            var xml = await ExportCollectionByIdAsync("List of Voucher Types");
+            // ExportCollectionXmlAsync injects the "AccziteVoucherTypes" TDL definition,
+            // so Tally can resolve the collection. ExportCollectionByIdAsync sends a bare
+            // <ID>List of Voucher Types</ID> without TDL — Tally returns a LINEERROR
+            // and ContainsElement("VOUCHERTYPE") returns false, making every check look
+            // like "no company loaded" even when one is.
+            var xml = await ExportCollectionXmlAsync("List of Voucher Types", isCollection: true);
             return ContainsElement(xml, "VOUCHERTYPE");
         }
 
@@ -557,34 +787,253 @@ namespace Acczite20.Services
             return await SendEnvelopeAsync(envelope);
         }
 
+        // ── Circuit Breaker state machine ─────────────────────────────────────────
+
+        public static bool IsCircuitOpen()
+        {
+            if (_circuitState == CircuitState.Closed || _circuitState == CircuitState.Warming)
+                return false;
+
+            if (_circuitState == CircuitState.Open)
+            {
+                if ((DateTime.UtcNow - _circuitOpenedAt).TotalSeconds >= CircuitCooldownSeconds)
+                    _circuitState = CircuitState.HalfOpen;
+                else
+                    return true;
+            }
+
+            // HalfOpen: only one probe at a time
+            if (_circuitState == CircuitState.HalfOpen)
+                return _probeInFlight;
+
+            return false;
+        }
+
+        public static int CircuitCooldownRemaining()
+        {
+            if (_circuitState != CircuitState.Open) return 0;
+            var remaining = CircuitCooldownSeconds - (int)(DateTime.UtcNow - _circuitOpenedAt).TotalSeconds;
+            return Math.Max(0, remaining);
+        }
+
+        /// <summary>
+        /// Exponential backoff: delay = BaseDelayMs × 2^failures, capped at MaxDelayMs.
+        /// In Warming state a fixed 3s delay gives Tally a soft ramp-up period.
+        /// </summary>
+        public static int CurrentDelayMs(bool isStream = false)
+        {
+            int delay;
+            if (_circuitState == CircuitState.Warming)
+            {
+                delay = 3000; // soft ramp-up: fixed 3s until circuit is fully closed
+            }
+            else
+            {
+                var exp = Math.Min(_consecutiveFailures, 4); // cap exponent: 2^4=16 → 24000ms before cap
+                delay = (int)(BaseDelayMs * Math.Pow(2, exp));
+                delay = Math.Min(delay, MaxDelayMs);
+            }
+            return isStream ? delay + StreamExtraCostMs : delay;
+        }
+
+        private void RecordSuccess()
+        {
+            if (_circuitState == CircuitState.HalfOpen)
+            {
+                // Probe OK — enter Warming instead of snapping back to full speed
+                _circuitState  = CircuitState.Warming;
+                _probeInFlight = false;
+                _warmingSuccesses = 0;
+                System.Threading.Interlocked.Exchange(ref _consecutiveFailures, 1); // start from 1, not 0, for soft ramp
+                _syncMonitor?.AddLog("Circuit breaker WARMING — probe succeeded. Ramping up slowly.", "SUCCESS", "CIRCUIT");
+                return;
+            }
+
+            if (_circuitState == CircuitState.Warming)
+            {
+                var ws = System.Threading.Interlocked.Increment(ref _warmingSuccesses);
+                if (ws >= WarmingRequiredSuccesses)
+                {
+                    _circuitState = CircuitState.Closed;
+                    _warmingSuccesses = 0;
+                    System.Threading.Interlocked.Exchange(ref _consecutiveFailures, 0);
+                    _syncMonitor?.AddLog("Circuit breaker CLOSED — warm-up complete.", "SUCCESS", "CIRCUIT");
+                }
+                return;
+            }
+
+            System.Threading.Interlocked.Exchange(ref _consecutiveFailures, 0);
+        }
+
+        /// <summary>
+        /// Records a failure with a given weight. Different failure types carry different weights
+        /// so the breaker reacts proportionally to severity.
+        /// </summary>
+        private void RecordFailureWeighted(int weight)
+        {
+            // Any failure during recovery re-opens the circuit immediately.
+            if (_circuitState == CircuitState.HalfOpen || _circuitState == CircuitState.Warming)
+            {
+                _circuitOpenedAt  = DateTime.UtcNow;
+                _circuitState     = CircuitState.Open;
+                _probeInFlight    = false;
+                _warmingSuccesses = 0;
+                System.Threading.Interlocked.Exchange(ref _consecutiveFailures, CircuitBreakerThreshold);
+                _syncMonitor?.AddLog(
+                    $"Circuit breaker re-OPENED during recovery. Next probe in {CircuitCooldownSeconds}s.",
+                    "ERROR", "CIRCUIT");
+                return;
+            }
+
+            var failures = System.Threading.Interlocked.Add(ref _consecutiveFailures, weight);
+            if (failures >= CircuitBreakerThreshold && _circuitState == CircuitState.Closed)
+            {
+                _circuitOpenedAt = DateTime.UtcNow;
+                _circuitState    = CircuitState.Open;
+                _syncMonitor?.AddLog(
+                    $"Circuit breaker OPENED (score={failures}). All requests paused for {CircuitCooldownSeconds}s.",
+                    "ERROR", "CIRCUIT");
+            }
+        }
+
+        /// <summary>Classifies an exception and records the appropriate failure weight.</summary>
+        private void RecordException(Exception ex)
+        {
+            if (ex is System.Net.Sockets.SocketException se &&
+                (se.SocketErrorCode == System.Net.Sockets.SocketError.ConnectionRefused ||
+                 se.SocketErrorCode == System.Net.Sockets.SocketError.HostUnreachable))
+            {
+                // Connection refused = Tally is dead. Open immediately.
+                _syncMonitor?.AddLog($"Tally connection refused — opening circuit immediately.", "ERROR", "CIRCUIT");
+                RecordFailureWeighted(CircuitBreakerThreshold);
+            }
+            else if (ex is TaskCanceledException || ex is TimeoutException ||
+                     (ex is HttpRequestException && ex.InnerException is System.Net.Sockets.SocketException))
+            {
+                // Timeout = Tally is overloaded. Weight 2.
+                _syncMonitor?.AddLog($"Tally timeout — backoff increased (weight 2).", "WARNING", "CIRCUIT");
+                RecordFailureWeighted(2);
+            }
+            else
+            {
+                RecordFailureWeighted(1);
+            }
+            _syncMonitor?.AddLog($"Tally error: {ex.Message}", "ERROR", "TALLY");
+        }
+
+        /// <summary>
+        /// Called after a successful response. If the response was slow,
+        /// records a soft failure to increase backoff before hard failures occur.
+        /// </summary>
+        private void RecordResponseTime(TimeSpan elapsed)
+        {
+            if (elapsed.TotalMilliseconds >= SlowResponseThresholdMs && _circuitState == CircuitState.Closed)
+            {
+                System.Threading.Interlocked.Increment(ref _consecutiveFailures);
+                _syncMonitor?.AddLog(
+                    $"Tally slow response ({elapsed.TotalSeconds:N1}s) — backoff increased pre-emptively.",
+                    "WARNING", "TALLY");
+            }
+        }
+
+        private static bool TryBeginProbe()
+        {
+            if (_probeInFlight) return false;
+            _probeInFlight = true;
+            return true;
+        }
+
+        // ── Core send methods ──────────────────────────────────────────────────────
+
         public async Task<string?> SendEnvelopeAsync(string envelope)
         {
-            try { 
-                if (envelope.Length < 5000)
-                    System.IO.File.WriteAllText("tally_request.xml", envelope); 
+            if (IsCircuitOpen())
+            {
+                _syncMonitor?.AddLog(
+                    $"Circuit {_circuitState} ({CircuitCooldownRemaining()}s remaining). Request blocked.",
+                    "WARNING", "CIRCUIT");
+                return null;
+            }
+
+            if (_circuitState == CircuitState.HalfOpen && !TryBeginProbe()) return null;
+
+            try {
+                if (envelope.Length < 5000) System.IO.File.WriteAllText("tally_request.xml", envelope);
             } catch { }
 
-            // Serialize all Tally requests and enforce a minimum inter-request gap
-            // to prevent Tally's XML server from being overwhelmed.
             await _tallyGate.WaitAsync();
             try
             {
-                var msSinceLastRequest = (DateTime.UtcNow - _lastRequestCompletedAt).TotalMilliseconds;
-                if (msSinceLastRequest < MinInterRequestDelayMs)
-                    await Task.Delay((int)(MinInterRequestDelayMs - msSinceLastRequest));
+                var gap = (DateTime.UtcNow - _lastRequestCompletedAt).TotalMilliseconds;
+                var delay = CurrentDelayMs();
+                if (gap < delay) await Task.Delay((int)(delay - gap));
 
-                var content = new StringContent(envelope, Encoding.UTF8, "application/xml");
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var content  = new StringContent(envelope, Encoding.UTF8, "application/xml");
                 var response = await _httpClient.PostAsync(TallyUrl, content);
+                sw.Stop();
                 _lastRequestCompletedAt = DateTime.UtcNow;
 
-                if (!response.IsSuccessStatusCode) return null;
+                if (!response.IsSuccessStatusCode) { RecordFailureWeighted(1); return null; }
 
                 var rawXml = await response.Content.ReadAsStringAsync();
+                RecordResponseTime(sw.Elapsed); // pre-throttle on slowness
+                RecordSuccess();
                 return SanitizeXml(rawXml);
             }
             catch (Exception ex)
             {
-                _syncMonitor?.AddLog($"Tally Request Failure: {ex.Message}", "ERROR", "TALLY");
+                RecordException(ex);
+                return null;
+            }
+            finally
+            {
+                _tallyGate.Release();
+            }
+        }
+
+        /// <summary>
+        /// Uses the 10-minute export client. Never use this for connection checks.
+        /// </summary>
+        private async Task<string?> SendExportEnvelopeAsync(string envelope)
+        {
+            if (IsCircuitOpen())
+            {
+                _syncMonitor?.AddLog(
+                    $"Circuit {_circuitState} ({CircuitCooldownRemaining()}s remaining). Export blocked.",
+                    "WARNING", "CIRCUIT");
+                return null;
+            }
+
+            if (_circuitState == CircuitState.HalfOpen && !TryBeginProbe()) return null;
+
+            try {
+                if (envelope.Length < 5000) System.IO.File.WriteAllText("tally_request.xml", envelope);
+            } catch { }
+
+            await _tallyGate.WaitAsync();
+            try
+            {
+                var gap   = (DateTime.UtcNow - _lastRequestCompletedAt).TotalMilliseconds;
+                var delay = CurrentDelayMs();
+                if (gap < delay) await Task.Delay((int)(delay - gap));
+
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var content  = new StringContent(envelope, Encoding.UTF8, "application/xml");
+                var response = await _exportHttpClient.PostAsync(TallyUrl, content);
+                sw.Stop();
+                _lastRequestCompletedAt = DateTime.UtcNow;
+
+                if (!response.IsSuccessStatusCode) { RecordFailureWeighted(1); return null; }
+
+                var rawXml = await response.Content.ReadAsStringAsync();
+                RecordResponseTime(sw.Elapsed);
+                RecordSuccess();
+                return SanitizeXml(rawXml);
+            }
+            catch (Exception ex)
+            {
+                RecordException(ex);
                 return null;
             }
             finally
@@ -642,7 +1091,6 @@ namespace Acczite20.Services
             return $@"
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <SVEXPORTLIMIT>200</SVEXPORTLIMIT>
         {dateVars}
         {companyVar}
       </STATICVARIABLES>";

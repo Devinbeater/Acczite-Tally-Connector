@@ -1,0 +1,224 @@
+{
+  "$schema": "http://json.schemastore.org/sarif-1.0.0",
+  "version": "1.0.0",
+  "runs": [
+    {
+      "tool": {
+        "name": "Microsoft (R) Visual C# Compiler",
+        "version": "4.14.0.0",
+        "fileVersion": "4.14.0-3.26064.1 (450493a9)",
+        "semanticVersion": "4.14.0",
+        "language": "en-US"
+      },
+      "results": [
+        {
+          "ruleId": "CS0108",
+          "level": "warning",
+          "message": "'Company.IsActive' hides inherited member 'BaseEntity.IsActive'. Use the new keyword if hiding was intended.",
+          "locations": [
+            {
+              "resultFile": {
+                "uri": "file:///C:/Users/OM%20WAGH/source/repos/Acczite20/Models/Company.cs",
+                "region": {
+                  "startLine": 11,
+                  "startColumn": 21,
+                  "endLine": 11,
+                  "endColumn": 29
+                }
+              }
+            }
+          ],
+          "properties": {
+            "warningLevel": 2
+          }
+        },
+        {
+          "ruleId": "CS0108",
+          "level": "warning",
+          "message": "'PendingMapping.CreatedAt' hides inherited member 'BaseEntity.CreatedAt'. Use the new keyword if hiding was intended.",
+          "locations": [
+            {
+              "resultFile": {
+                "uri": "file:///C:/Users/OM%20WAGH/source/repos/Acczite20/Models/Integration/IntegrationCoreModels.cs",
+                "region": {
+                  "startLine": 25,
+                  "startColumn": 25,
+                  "endLine": 25,
+                  "endColumn": 34
+                }
+              }
+            }
+          ],
+          "properties": {
+            "warningLevel": 2
+          }
+        },
+        {
+          "ruleId": "CS0108",
+          "level": "warning",
+          "message": "'IntegrationEventQueue.CreatedAt' hides inherited member 'BaseEntity.CreatedAt'. Use the new keyword if hiding was intended.",
+          "locations": [
+            {
+              "resultFile": {
+                "uri": "file:///C:/Users/OM%20WAGH/source/repos/Acczite20/Models/Integration/IntegrationCoreModels.cs",
+                "region": {
+                  "startLine": 34,
+                  "startColumn": 31,
+                  "endLine": 34,
+                  "endColumn": 40
+                }
+              }
+            }
+          ],
+          "properties": {
+            "warningLevel": 2
+          }
+        },
+        {
+          "ruleId": "CS0246",
+          "level": "error",
+          "message": "The type or namespace name 'SyncStateMonitor' could not be found (are you missing a using directive or an assembly reference?)",
+          "locations": [
+            {
+              "resultFile": {
+                "uri": "file:///C:/Users/OM%20WAGH/source/repos/Acczite20/Services/TallyXmlService.cs",
+                "region": {
+                  "startLine": 38,
+                  "startColumn": 26,
+                  "endLine": 38,
+                  "endColumn": 42
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "CS0246",
+          "level": "error",
+          "message": "The type or namespace name 'SyncStateMonitor' could not be found (are you missing a using directive or an assembly reference?)",
+          "locations": [
+            {
+              "resultFile": {
+                "uri": "file:///C:/Users/OM%20WAGH/source/repos/Acczite20/Services/TallyXmlService.cs",
+                "region": {
+                  "startLine": 40,
+                  "startColumn": 32,
+                  "endLine": 40,
+                  "endColumn": 48
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "CS8625",
+          "level": "warning",
+          "message": "Cannot convert null literal to non-nullable reference type.",
+          "locations": [
+            {
+              "resultFile": {
+                "uri": "file:///C:/Users/OM%20WAGH/source/repos/Acczite20/Views/Pages/LedgerExplorerPage.xaml.cs",
+                "region": {
+                  "startLine": 17,
+                  "startColumn": 83,
+                  "endLine": 17,
+                  "endColumn": 87
+                }
+              }
+            }
+          ],
+          "properties": {
+            "warningLevel": 1
+          }
+        },
+        {
+          "ruleId": "CS8625",
+          "level": "warning",
+          "message": "Cannot convert null literal to non-nullable reference type.",
+          "locations": [
+            {
+              "resultFile": {
+                "uri": "file:///C:/Users/OM%20WAGH/source/repos/Acczite20/Views/Pages/TrialBalancePage.xaml.cs",
+                "region": {
+                  "startLine": 26,
+                  "startColumn": 83,
+                  "endLine": 26,
+                  "endColumn": 87
+                }
+              }
+            }
+          ],
+          "properties": {
+            "warningLevel": 1
+          }
+        },
+        {
+          "ruleId": "CS8625",
+          "level": "warning",
+          "message": "Cannot convert null literal to non-nullable reference type.",
+          "locations": [
+            {
+              "resultFile": {
+                "uri": "file:///C:/Users/OM%20WAGH/source/repos/Acczite20/Views/Pages/VoucherExplorerPage.xaml.cs",
+                "region": {
+                  "startLine": 17,
+                  "startColumn": 83,
+                  "endLine": 17,
+                  "endColumn": 87
+                }
+              }
+            }
+          ],
+          "properties": {
+            "warningLevel": 1
+          }
+        }
+      ],
+      "rules": {
+        "CS0108": {
+          "id": "CS0108",
+          "shortDescription": "Member hides inherited member; missing new keyword",
+          "fullDescription": "A variable was declared with the same name as a variable in a base type. However, the new keyword was not used. This warning informs you that you should use new; the variable is declared as if new had been used in the declaration.",
+          "defaultLevel": "warning",
+          "helpUri": "https://msdn.microsoft.com/query/roslyn.query?appId=roslyn&k=k(CS0108)",
+          "properties": {
+            "category": "Compiler",
+            "isEnabledByDefault": true,
+            "tags": [
+              "Compiler",
+              "Telemetry"
+            ]
+          }
+        },
+        "CS0246": {
+          "id": "CS0246",
+          "defaultLevel": "error",
+          "helpUri": "https://msdn.microsoft.com/query/roslyn.query?appId=roslyn&k=k(CS0246)",
+          "properties": {
+            "category": "Compiler",
+            "isEnabledByDefault": true,
+            "tags": [
+              "Compiler",
+              "Telemetry",
+              "NotConfigurable"
+            ]
+          }
+        },
+        "CS8625": {
+          "id": "CS8625",
+          "shortDescription": "Cannot convert null literal to non-nullable reference type.",
+          "defaultLevel": "warning",
+          "helpUri": "https://msdn.microsoft.com/query/roslyn.query?appId=roslyn&k=k(CS8625)",
+          "properties": {
+            "category": "Compiler",
+            "isEnabledByDefault": true,
+            "tags": [
+              "Compiler",
+              "Telemetry"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

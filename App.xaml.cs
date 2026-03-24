@@ -167,6 +167,8 @@ namespace Acczite20
             services.AddTransient<AdminService>();
             services.AddTransient<PandLService>();
             services.AddTransient<BalanceSheetService>();
+            services.AddTransient<FinancialHealthService>();
+            services.AddTransient<LedgerDrillDownService>();
             
             // Advanced Analytics & Integrity
             services.AddScoped<ITimelineService, TimelineService>();

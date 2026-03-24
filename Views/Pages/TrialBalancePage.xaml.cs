@@ -7,15 +7,17 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using Acczite20.Services;
 using Acczite20.Services.Reports;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Acczite20.Views.Pages
 {
     public class TbRowItem
     {
-        public string Name { get; set; } = string.Empty;
-        public decimal Debit { get; set; }
+        public string Name    { get; set; } = string.Empty;
+        public string RawName { get; set; } = string.Empty;   // unformatted ledger name for drill-down navigation
+        public decimal Debit  { get; set; }
         public decimal Credit { get; set; }
-        public bool IsGroup { get; set; }
+        public bool IsGroup   { get; set; }
     }
 
     public partial class TrialBalancePage : Page, INotifyPropertyChanged
@@ -71,10 +73,13 @@ namespace Acczite20.Views.Pages
             var orgId = SessionManager.Instance.OrganizationId;
             if (orgId == Guid.Empty) return;
 
-            var result = await _tbService.GenerateTrialBalanceAsync(
-                orgId,
-                AsOfDatePicker.SelectedDate
-            );
+            // Pass as asOfDate (point-in-time cutoff), not fromDate (period start filter).
+            // fromDate = null means: use Tally opening balances + all transactions up to asOfDate.
+            DateTimeOffset? asOf = AsOfDatePicker.SelectedDate.HasValue
+                ? (DateTimeOffset?)AsOfDatePicker.SelectedDate.Value.Date.AddDays(1).AddTicks(-1)
+                : null;
+
+            var result = await _tbService.GenerateTrialBalanceAsync(orgId, asOfDate: asOf);
 
             Report = result;
             FlattenToDataGrid(result);
@@ -85,43 +90,61 @@ namespace Acczite20.Views.Pages
             OnPropertyChanged(nameof(StatusTextBrush));
         }
 
+        private void TrialBalanceGrid_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (TrialBalanceGrid.SelectedItem is not TbRowItem row || row.IsGroup || string.IsNullOrEmpty(row.RawName))
+                return;
+
+            var asOf = AsOfDatePicker.SelectedDate ?? DateTime.Today;
+            int fyYear = asOf.Month >= 4 ? asOf.Year : asOf.Year - 1;
+            var from = new DateTimeOffset(fyYear, 4, 1, 0, 0, 0, TimeSpan.Zero);
+            var to   = new DateTimeOffset(asOf.Year, asOf.Month, asOf.Day, 23, 59, 59, TimeSpan.Zero);
+
+            var service = App.Current.ServiceProvider.GetRequiredService<LedgerDrillDownService>();
+            var page    = new LedgerDrillDownPage(service, row.RawName, from, to);
+            NavigationService?.Navigate(page);
+        }
+
         private void FlattenToDataGrid(TrialBalanceReportModel report)
         {
             FlattenedRows.Clear();
 
+            void AddGroup(TrialBalanceGroup group, int depth)
+            {
+                var indent = new string(' ', depth * 4);
+                var icon = depth == 0 ? "📁" : "  └";
+                FlattenedRows.Add(new TbRowItem
+                {
+                    Name = $"{indent}{icon} {group.GroupName}",
+                    Debit = group.TotalDebit,
+                    Credit = group.TotalCredit,
+                    IsGroup = true
+                });
+
+                foreach (var ledger in group.Ledgers)
+                {
+                    var ledgerIndent = new string(' ', (depth + 1) * 4);
+                    FlattenedRows.Add(new TbRowItem
+                    {
+                        Name    = $"{ledgerIndent}• {ledger.LedgerName}",
+                        RawName = ledger.LedgerName,
+                        Debit   = ledger.DebitBalance,
+                        Credit  = ledger.CreditBalance,
+                        IsGroup = false
+                    });
+                }
+
+                // Recurse into child groups
+                foreach (var child in group.ChildGroups)
+                    AddGroup(child, depth + 1);
+            }
+
             void AddSection(string header, System.Collections.Generic.List<TrialBalanceGroup> groups)
             {
                 if (groups.Count == 0) return;
-
-                decimal sectionDebit = 0;
-                decimal sectionCredit = 0;
-
                 FlattenedRows.Add(new TbRowItem { Name = header.ToUpper(), IsGroup = true });
-
                 foreach (var group in groups)
-                {
-                    FlattenedRows.Add(new TbRowItem 
-                    { 
-                        Name = $"  📁 {group.GroupName}", 
-                        Debit = group.TotalDebit, 
-                        Credit = group.TotalCredit, 
-                        IsGroup = true 
-                    });
-
-                    foreach (var ledger in group.Ledgers)
-                    {
-                        FlattenedRows.Add(new TbRowItem 
-                        { 
-                            Name = $"       • {ledger.LedgerName}", 
-                            Debit = ledger.DebitBalance, 
-                            Credit = ledger.CreditBalance, 
-                            IsGroup = false 
-                        });
-                    }
-
-                    sectionDebit += group.TotalDebit;
-                    sectionCredit += group.TotalCredit;
-                }
+                    AddGroup(group, 0);
             }
 
             AddSection("Assets", report.Assets);
