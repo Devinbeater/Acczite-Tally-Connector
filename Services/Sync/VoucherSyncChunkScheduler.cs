@@ -1,134 +1,92 @@
 using System;
-using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Acczite20.Services.Sync
 {
     public sealed class VoucherSyncChunkScheduler
     {
-        private readonly TimeSpan _minWindow;
-        private readonly TimeSpan _maxWindow;
-        private readonly TimeSpan _slowThreshold;
-        private readonly TimeSpan _fastThreshold;
-        private int  _maxVouchersPerChunk;  // mutable — reduced dynamically under sustained overload
-        private readonly int _maxRecordsPerChunk;
-        private readonly long _largePayloadBytes;
-        private readonly long _smallPayloadBytes;
         private TimeSpan _window;
+        
+        // Strict Bounds for Layer 1
+        private readonly TimeSpan _minWindow = TimeSpan.FromHours(1);
+        private readonly TimeSpan _maxWindow = TimeSpan.FromDays(30);
+        
+        // Layer 2 Constants
+        private const int _layer2BatchSize = 25;
+        private const int _layer1CoarseLimit = 500;
 
-        private const int MinVouchersPerChunkFloor = 50; // never reduce the cap below this
+        private bool _isSafeModeActive = false;
+        private int _stableChunksCount = 0;
 
-        public VoucherSyncChunkScheduler(
-            TimeSpan? initialWindow = null,
-            TimeSpan? minWindow = null,
-            TimeSpan? maxWindow = null,
-            TimeSpan? fastThreshold = null,
-            TimeSpan? slowThreshold = null,
-            int maxRecordsPerChunk = 150,
-            long largePayloadBytes = 16 * 1024 * 1024,
-            long smallPayloadBytes = 4 * 1024 * 1024)
+        public VoucherSyncChunkScheduler(TimeSpan? initialWindow = null)
         {
             _window = initialWindow ?? TimeSpan.FromDays(1);
-            _minWindow = minWindow ?? TimeSpan.FromHours(6);
-            _maxWindow = maxWindow ?? TimeSpan.FromDays(3);
-            _fastThreshold = fastThreshold ?? TimeSpan.FromSeconds(2);
-            _slowThreshold = slowThreshold ?? TimeSpan.FromSeconds(10);
-            _maxVouchersPerChunk = maxRecordsPerChunk;
-            _maxRecordsPerChunk = maxRecordsPerChunk;
-            _largePayloadBytes = largePayloadBytes;
-            _smallPayloadBytes = smallPayloadBytes;
+            Clamp();
         }
 
-        public TimeSpan CurrentWindow      => _window;
-        public TimeSpan MinWindow          => _minWindow;
-        public int      MaxVouchersPerChunk => _maxVouchersPerChunk;
+        public TimeSpan CurrentWindow => _window;
+        public TimeSpan MinWindow => _minWindow;
+        
+        // The hard cap for Pass 2 inside the executor
+        public int MaxVouchersPerChunk => _layer2BatchSize;
+        
+        // The density threshold for Pass 1
+        public int CoarseDensityLimit => _layer1CoarseLimit;
 
-        /// <summary>
-        /// Halves the per-chunk voucher cap (floor: 50).
-        /// Called by VoucherSyncController when overload retries exceed the threshold,
-        /// meaning even smaller time windows are not helping — we need fewer records.
-        /// </summary>
-        public void ReduceVoucherCap()
+        public void Adjust(TimeSpan elapsed, int voucherCount, long bytesReceived, bool failed, bool isSafeMode)
         {
-            var reduced = Math.Max(MinVouchersPerChunkFloor, _maxVouchersPerChunk / 2);
-            _maxVouchersPerChunk = reduced;
-        }
-
-        public async IAsyncEnumerable<DateRange> GetChunksAsync(
-            DateTimeOffset from,
-            DateTimeOffset to,
-            [EnumeratorCancellation] CancellationToken ct)
-        {
-            if (from > to)
+            if (_isSafeModeActive || isSafeMode)
             {
-                yield break;
+                ActivateSafeMode();
+                return;
             }
 
-            var current = from;
-
-            while (current <= to)
+            if (failed)
             {
-                ct.ThrowIfCancellationRequested();
+                // Halve the window if chunk overloaded OR Tally timed out
+                _stableChunksCount = 0;
+                ScaleWindow(0.5);
+                return;
+            }
 
-                var end = current.Add(_window).AddTicks(-1);
-                if (end > to)
+            // Grow window slowly if Tally passes easily (Layer 1 returned headers effortlessly)
+            if (voucherCount < (_layer1CoarseLimit / 2))
+            {
+                _stableChunksCount++;
+                if (_stableChunksCount >= 3)
                 {
-                    end = to;
+                    ScaleWindow(1.5);
+                    _stableChunksCount = 0;
                 }
-
-                yield return new DateRange(current, end);
-
-                if (end >= to)
-                {
-                    yield break;
-                }
-
-                current = end.AddTicks(1);
-                await Task.Yield();
             }
         }
 
-        public void Adjust(TimeSpan responseTime, int recordCount, long payloadBytes, bool failed = false, bool isSafeMode = false)
+        private void ScaleWindow(double factor)
         {
-            var next = _window;
-
-            if (failed || responseTime >= _slowThreshold || recordCount >= _maxRecordsPerChunk || payloadBytes >= _largePayloadBytes)
-            {
-                next = Scale(_window, 0.5);
-            }
-            else if (!isSafeMode && responseTime <= _fastThreshold && recordCount <= _maxRecordsPerChunk / 4 && payloadBytes <= _smallPayloadBytes)
-            {
-                next = Scale(_window, 2.0);
-            }
-            else if (!isSafeMode && responseTime <= TimeSpan.FromSeconds(5) && recordCount <= _maxRecordsPerChunk / 2 && payloadBytes <= _largePayloadBytes / 2)
-            {
-                next = Scale(_window, 1.5);
-            }
-
-            _window = Clamp(next);
+            double ticks = _window.Ticks * factor;
+            long maxTicks = _maxWindow.Ticks;
+            long minTicks = _minWindow.Ticks;
+            
+            ticks = Math.Max(minTicks, Math.Min(maxTicks, ticks));
+            _window = TimeSpan.FromTicks((long)ticks);
         }
 
-        private TimeSpan Clamp(TimeSpan value)
+        private void Clamp()
         {
-            if (value < _minWindow)
-            {
-                return _minWindow;
-            }
-
-            if (value > _maxWindow)
-            {
-                return _maxWindow;
-            }
-
-            return value;
+            if (_window < _minWindow) _window = _minWindow;
+            if (_window > _maxWindow) _window = _maxWindow;
         }
 
-        private static TimeSpan Scale(TimeSpan window, double factor)
+        public void ActivateSafeMode()
         {
-            var ticks = (long)Math.Max(TimeSpan.FromHours(1).Ticks, window.Ticks * factor);
-            return TimeSpan.FromTicks(ticks);
+            _isSafeModeActive = true;
+            _window = _minWindow;
+            _stableChunksCount = 0;
+        }
+
+        public void ReduceVoucherCapAndWindow()
+        {
+            // Fallback for controller retries
+            ScaleWindow(0.5);
         }
     }
 }

@@ -30,33 +30,19 @@ namespace Acczite20.Services.Sync
             _syncMonitor = syncMonitor;
         }
 
-        // ── Voucher cap — read from scheduler (dynamically reduced under sustained load) ─
-        // VoucherSyncController reduces _scheduler.MaxVouchersPerChunk after 2+ retries:
-        //   150 → 75 → 50 (floor).
-        // Two-path logic based on whether the window can still shrink:
+        // ── Two-pass voucher export (Dual-Layer Control) ──────────────────────────
         //
-        //   window > MinWindow  → throw ChunkOverloadedException (time-split, no Pass 2)
-        //   window == MinWindow → enter 3-pass fallback (time cannot shrink further):
-        //       Pass 2a: AccziteVoucherLedgers   → MergeLedgerEntries  (accounting data)
-        //       Pass 2b: AccziteVoucherInventory → MergeInventoryEntries (stock data)
-        //     Each pass is ~half the payload of AccziteVoucherDetail, preventing OOM.
-        private int EffectiveCap => _scheduler.MaxVouchersPerChunk;
-
-        // ── Two-pass voucher export ──────────────────────────────────────────────
-        //
-        // Old design: one request with AccziteVoucherPipeline fetching ALL fields
-        //   (ALLLEDGERENTRIES.*, ALLINVENTORYENTRIES.*, INVENTORYALLOCATIONS.*,
-        //   TAXCLASSIFICATIONDETAILS.*) — Tally had to hold the entire response
-        //   in memory before sending a single byte, which caused OOM crashes.
-        //
-        // New design:
-        //   Pass 1 — AccziteVoucherHeaders (scalar fields only, ~1/10th the bytes)
+        // Layer 1: Temporal Coarse Slicing (The Density Guard)
+        //   Pass 1 — AccziteVoucherHeaders (scalar fields only, extremely lightweight)
         //     Collect voucher shells into an in-memory dictionary keyed by MASTERID.
-        //     → Throw ChunkOverloadedException if count > MaxVouchersPerChunk and
-        //       window > MinWindow so the controller can retry with a smaller window.
+        //     → Throw ChunkOverloadedException if count > CoarseDensityLimit (e.g. 500) and
+        //       window > MinWindow so the controller can retry with a smaller coarse window.
+        //
+        // Layer 2: MASTERID Batching (The Heavy Guard)
         //   Pass 2 — AccziteVoucherDetail (ALLLEDGERENTRIES.*, ALLINVENTORYENTRIES.*)
-        //     Stream ledger/inventory detail, merge into the header dictionary.
-        //   Yield — iterate the completed dictionary; skip vouchers with no detail.
+        //     If Layer 1 passes (num records <= 500), slice the resolved MASTERIDs into chunks
+        //     of MaxVouchersPerChunk (e.g. 25). Stream ledger/inventory detail for precisely those
+        //     MASTERIDs to prevent Tally from compiling massive internal responses.
 
         public async IAsyncEnumerable<Voucher> ExportVouchersStreamAsync(
             Guid orgId,
@@ -124,8 +110,8 @@ namespace Acczite20.Services.Sync
                 yield break;
             }
 
-            // ── Overload check ─────────────────────────────────────────────────────
-            if (headers.Count > EffectiveCap)
+            // ── Layer 1: Density Guard (Coarse Control) ────────────────────────────
+            if (headers.Count > _scheduler.CoarseDensityLimit)
             {
                 if (_scheduler.CurrentWindow > _scheduler.MinWindow)
                 {
@@ -135,122 +121,61 @@ namespace Acczite20.Services.Sync
                     metrics.Elapsed      = sw.Elapsed;
                     metrics.PayloadBytes = headerBytes;
                     _scheduler.Adjust(metrics.Elapsed, headers.Count, headerBytes, failed: true, isSafeMode: _syncMonitor.SyncMode == "Safe");
-                    throw new ChunkOverloadedException(headers.Count, EffectiveCap, _scheduler.CurrentWindow);
+                    throw new ChunkOverloadedException(headers.Count, _scheduler.CoarseDensityLimit, _scheduler.CurrentWindow);
                 }
-                // Window is already at minimum. Fall through to 3-pass mode below.
+                
+                // Window is already at minimum (e.g. 1 hour). We must proceed despite coarse density.
+                _syncMonitor.AddLog($"Density Guard: {_scheduler.CurrentWindow.TotalHours:0.#}h window has {headers.Count} > limit {_scheduler.CoarseDensityLimit}. Proceeding gracefully via Layer 2.", "WARNING", "THROTTLE");
             }
 
-            // ── Pass 2 (or 3-pass fallback at MinWindow) ───────────────────────────
-            // Normal path (count ≤ cap, or window > MinWindow didn't fire above):
-            //   Single detail request: AccziteVoucherDetail (ALLLEDGERENTRIES.* + ALLINVENTORYENTRIES.*)
-            //
-            // 3-pass path (count > cap AND window == MinWindow):
-            //   Pass 2a: AccziteVoucherLedgers   → accounting data + integrity check
-            //   Pass 2b: AccziteVoucherInventory → root-level stock entries
-            //   Each pass carries ~half the payload of AccziteVoucherDetail.
-            var useThreePass = headers.Count > EffectiveCap &&
-                               _scheduler.CurrentWindow <= _scheduler.MinWindow;
-
+            // ── Layer 2: ID Batching (Fine Control) ───────────────────────────────
             var failed = true;
             try
             {
-                if (!useThreePass)
+                var allIds = headers.Keys.ToList();
+                int totalBatches = (int)Math.Ceiling(allIds.Count / (double)_scheduler.MaxVouchersPerChunk);
+                int currentBatch = 1;
+
+                foreach (var batch in allIds.Chunk(_scheduler.MaxVouchersPerChunk))
                 {
-                    // ── Standard 2-pass detail WITH ID-Batching ─────────────────────
-                    var maxIds = 25; // Safe TDL OR-chain emulation upper bound
-                    var batchLists = headers.Values
-                        .Select((v, i) => new { v, i })
-                        .GroupBy(x => x.i / maxIds)
-                        .Select(g => g.Select(x => x.v).ToList())
-                        .ToList();
+                    ct.ThrowIfCancellationRequested();
+                    
+                    var idList = string.Join(",", batch);
+                    metrics.WindowUsed = _scheduler.CurrentWindow;
+                    
+                    _syncMonitor.AddLog($"Fetching heavy detail batch {currentBatch++}/{totalBatches} ({batch.Length} vouchers)...", "DEBUG", "TALLY");
 
-                    foreach (var batch in batchLists)
-                    {
-                        ct.ThrowIfCancellationRequested();
-
-                        while (_syncMonitor.IsPaused)
-                        {
-                            _syncMonitor.TallyHealth = "Paused";
-                            await Task.Delay(1000, ct);
-                        }
-
-                        var idList = string.Join(",", batch.Select(v => v.TallyMasterId));
-
-                        try
-                        {
-                            await using var detailLease = await _tallyService.OpenCollectionXmlStreamAsync(
-                                "AccziteVoucherDetail", range.Start, range.End, true, ct, idList: idList);
-
-                            if (detailLease == null)
-                                throw new InvalidOperationException($"Tally did not return a detail stream for ID batch.");
-
-                            metrics.PayloadBytes += detailLease.DeclaredSize;
-                            await MergeStreamAsync(detailLease.Stream, headers, metrics, ct,
-                                (el, v) => { if (!_xmlParser.MergeVoucherDetail(el, v)) { metrics.RejectedCount++; return false; } return true; },
-                                readerSettings);
-                        }
-                        catch (Exception ex)
-                        {
-                            _syncMonitor?.AddLog($"ID-Batch stream failed ({idList.Length} chars): {ex.Message}. Using fallback logic.", "WARNING", "FALLBACK");
-                            
-                            // 10-item fallback
-                            var smallerBatches = batch
-                                .Select((v, i) => new { v, i })
-                                .GroupBy(x => x.i / 10)
-                                .Select(g => g.Select(x => x.v).ToList());
-
-                            foreach (var smBatch in smallerBatches)
-                            {
-                                var smIdList = string.Join(",", smBatch.Select(v => v.TallyMasterId));
-                                await using var smLease = await _tallyService.OpenCollectionXmlStreamAsync(
-                                    "AccziteVoucherDetail", range.Start, range.End, true, ct, idList: smIdList);
-                                if (smLease != null)
-                                {
-                                    await MergeStreamAsync(smLease.Stream, headers, metrics, ct,
-                                        (el, v) => { if (!_xmlParser.MergeVoucherDetail(el, v)) { metrics.RejectedCount++; return false; } return true; },
-                                        readerSettings);
-                                }
-                            }
-                        }
-
-                        if (_syncMonitor.SyncMode == "Safe")
-                        {
-                            await Task.Delay(3000, ct);
-                        }
-                    }
-                }
-                else
-                {
-                    // ── 3-pass fallback: ledgers then root inventory ──────────────────
-                    // Pass 2a: ALLLEDGERENTRIES.* — accounting + integrity check
+                    // Safe to request detail fields because Tally evaluates strictly <= 25 records.
+                    // Splitting into 2A (Ledgers) and 2B (Inventory) to reduce peak XML payload per response.
+                    
+                    // ── Pass 2A: Ledgers ──────────────────────────────────────────
                     await using var ledgerLease = await _tallyService.OpenCollectionXmlStreamAsync(
-                        "AccziteVoucherLedgers", range.Start, range.End, true, ct);
+                        "AccziteVoucherLedgers", range.Start, range.End, true, ct, idList);
 
                     if (ledgerLease == null)
-                    {
-                        metrics.Elapsed = sw.Elapsed;
-                        _scheduler.Adjust(metrics.Elapsed, 0, headerBytes, failed: true, isSafeMode: _syncMonitor.SyncMode == "Safe");
-                        throw new InvalidOperationException($"Tally did not return a ledger stream for {range}.");
-                    }
+                        throw new InvalidOperationException($"Tally did not return a ledger stream for {range} batch.");
 
-                    metrics.PayloadBytes = headerBytes + ledgerLease.DeclaredSize;
+                    metrics.PayloadBytes += ledgerLease.DeclaredSize;
                     await MergeStreamAsync(ledgerLease.Stream, headers, metrics, ct,
                         (el, v) => { if (!_xmlParser.MergeLedgerEntries(el, v)) { metrics.RejectedCount++; return false; } return true; },
                         readerSettings);
 
-                    // Pass 2b: ALLINVENTORYENTRIES.* — root-level stock (much lighter)
-                    await using var invLease = await _tallyService.OpenCollectionXmlStreamAsync(
-                        "AccziteVoucherInventory", range.Start, range.End, true, ct);
+                    // ── Pass 2B: Inventory ────────────────────────────────────────
+                    await using var inventoryLease = await _tallyService.OpenCollectionXmlStreamAsync(
+                        "AccziteVoucherInventory", range.Start, range.End, true, ct, idList);
 
-                    if (invLease != null) // inventory pass is best-effort — not every company uses it
+                    if (inventoryLease != null)
                     {
-                        metrics.PayloadBytes += invLease.DeclaredSize;
-                        // Use a null-metrics stand-in so FetchedCount is not double-counted.
                         var noCountMetrics = new VoucherChunkExecutionMetrics();
-                        await MergeStreamAsync(invLease.Stream, headers, noCountMetrics, ct,
+                        metrics.PayloadBytes += inventoryLease.DeclaredSize;
+                        await MergeStreamAsync(inventoryLease.Stream, headers, noCountMetrics, ct,
                             (el, v) => { _xmlParser.MergeInventoryEntries(el, v); return true; },
                             readerSettings);
                     }
+
+                    // Delay between batch sets to keep Tally memory un-spiked
+                    if (currentBatch <= totalBatches)
+                        await Task.Delay(2000, ct); 
                 }
 
                 failed = false;

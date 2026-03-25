@@ -116,9 +116,9 @@ namespace Acczite20.Services
             _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 
             // Export client — with two-pass chunking each request is a fraction of the old
-            // single-pass payload. 90s is generous for any single pass over a 1–2 hour window.
+            // single-pass payload. 10 minutes (600s) is required for massive initial Header fetches.
             // Fail-fast on hang: a stalled Tally is worse than a retried smaller chunk.
-            _exportHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
+            _exportHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(600) };
 
             _syncMonitor = syncMonitor;
         }
@@ -407,7 +407,7 @@ namespace Acczite20.Services
   <TDLMESSAGE>
     <COLLECTION NAME=""AccziteLedgerHeaders"" ISMODIFY=""No"">
       <TYPE>Ledger</TYPE>
-      <FETCH>MASTERID, NAME, PARENT, OPENINGBALANCE, CLOSINGBALANCE</FETCH>
+      <FETCH>MASTERID, NAME, PARENT, OPENINGBALANCE</FETCH>
     </COLLECTION>
   </TDLMESSAGE>
 </TDL>";
@@ -419,7 +419,7 @@ namespace Acczite20.Services
   <TDLMESSAGE>
     <COLLECTION NAME=""AccziteLedgerDetails"" ISMODIFY=""No"">
       <TYPE>Ledger</TYPE>
-      <FETCH>MASTERID, GSTAPPLICABILITY, GSTREGISTRATIONTYPE, PARTYGSTIN, GSTIN, ISBILLWISEON, LEDSTATENAME, INCOMETAXNUMBER, EMAIL, MAILINGNAME, ADDRESS.LIST.*</FETCH>
+      <FETCH>MASTERID, CLOSINGBALANCE, GSTAPPLICABILITY, GSTREGISTRATIONTYPE, PARTYGSTIN, GSTIN, ISBILLWISEON, LEDSTATENAME, INCOMETAXNUMBER, EMAIL, MAILINGNAME, ADDRESS.LIST.*</FETCH>
     </COLLECTION>
   </TDLMESSAGE>
 </TDL>";
@@ -441,7 +441,7 @@ namespace Acczite20.Services
                 string idFilterTdl = string.IsNullOrEmpty(idList) ? "" : @"
             <SYSTEM TYPE=""Variable"" NAME=""AccziteIdList"" DATATYPE=""String""/>
             <SYSTEM TYPE=""Formulae"" NAME=""AccziteIdFilter"">
-              $$InList:$MASTERID:##AccziteIdList
+              $$Contains:"",""+##AccziteIdList+"","":"",""+$MASTERID+"",""
             </SYSTEM>";
 
                 string filterSyntax = string.IsNullOrEmpty(idList) ? "" : "\n      <FILTER>AccziteIdFilter</FILTER>";
@@ -613,13 +613,23 @@ namespace Acczite20.Services
                 var collectionTdl = GetSingleCollectionTdl(collectionOrReport);
                 if (!string.IsNullOrEmpty(idList))
                 {
-                    collectionTdl = collectionTdl.Replace("<FILTER>AccziteDateFilter</FILTER>", "<FILTER>AccziteIdFilter</FILTER>");
+                    // ADD the ID filter alongside the date filter — do NOT replace it.
+                    // Multiple <FILTER> entries are AND-ed by Tally, so both constraints apply.
+                    // Removing the date filter caused Tally to scan all vouchers from all time
+                    // with ALLLEDGERENTRIES.* on each detail batch → OOM crash.
+                    collectionTdl = collectionTdl.Replace(
+                        "<FILTER>AccziteDateFilter</FILTER>",
+                        "<FILTER>AccziteDateFilter</FILTER><FILTER>AccziteIdFilter</FILTER>");
                 }
 
+                // $$Contains:MainString:SubString — checks if MainString contains SubString.
+                // Wrapping both sides with commas prevents false prefix matches
+                // (e.g. "ID1" must not match "ID10,ID11,...").
+                // $$InList was wrong here — it expects a named TDL Collection, not a string var.
                 string idFilterTdl = string.IsNullOrEmpty(idList) ? "" : @"
             <SYSTEM TYPE=""Variable"" NAME=""AccziteIdList"" DATATYPE=""String""/>
             <SYSTEM TYPE=""Formulae"" NAME=""AccziteIdFilter"">
-              $$InList:$MASTERID:##AccziteIdList
+              $$Contains:"",""+##AccziteIdList+"","":"",""+$$String:$MASTERID+"",""
             </SYSTEM>";
 
                 envelope = $@"
@@ -763,14 +773,14 @@ namespace Acczite20.Services
             <COLLECTION NAME=""AccziteVoucherHeaders"" ISMODIFY=""No"">
               <TYPE>Voucher</TYPE>
               <FILTER>AccziteDateFilter</FILTER>
-              <FETCH>MASTERID, ALTERID, DATE, VOUCHERNUMBER, VOUCHERTYPENAME, NARRATION, ISCANCELLED, ISOPTIONAL</FETCH>
+              <FETCH>MASTERID, DATE, VOUCHERNUMBER, VOUCHERTYPENAME, ALTERID</FETCH>
             </COLLECTION>",
 
             "AccziteVoucherLedgers" => @"
             <COLLECTION NAME=""AccziteVoucherLedgers"" ISMODIFY=""No"">
               <TYPE>Voucher</TYPE>
               <FILTER>AccziteDateFilter</FILTER>
-              <FETCH>MASTERID, ALLLEDGERENTRIES.*</FETCH>
+              <FETCH>MASTERID, ISCANCELLED, ISOPTIONAL, REFERENCE, NARRATION, ALLLEDGERENTRIES.*</FETCH>
             </COLLECTION>",
 
             // Used as Pass 3 in the min-window 3-pass fallback.
@@ -779,7 +789,7 @@ namespace Acczite20.Services
             <COLLECTION NAME=""AccziteVoucherInventory"" ISMODIFY=""No"">
               <TYPE>Voucher</TYPE>
               <FILTER>AccziteDateFilter</FILTER>
-              <FETCH>MASTERID, ALLINVENTORYENTRIES.*</FETCH>
+              <FETCH>MASTERID, ISCANCELLED, ISOPTIONAL, ALLINVENTORYENTRIES.*</FETCH>
             </COLLECTION>",
 
             "AccziteVoucherGST" => @"
@@ -811,7 +821,19 @@ namespace Acczite20.Services
             <COLLECTION NAME=""AccziteVoucherDetail"" ISMODIFY=""No"">
               <TYPE>Voucher</TYPE>
               <FILTER>AccziteDateFilter</FILTER>
-              <FETCH>MASTERID, ALLLEDGERENTRIES.*, ALLINVENTORYENTRIES.*</FETCH>
+              <FETCH>MASTERID, ISCANCELLED, ISOPTIONAL, REFERENCE, NARRATION, ALLLEDGERENTRIES.*, ALLINVENTORYENTRIES.*</FETCH>
+            </COLLECTION>",
+
+            "AccziteLedgerHeaders" => @"
+            <COLLECTION NAME=""AccziteLedgerHeaders"" ISMODIFY=""No"">
+              <TYPE>Ledger</TYPE>
+              <FETCH>MASTERID, NAME, PARENT, OPENINGBALANCE, ALTERID</FETCH>
+            </COLLECTION>",
+
+            "AccziteLedgerDetails" => @"
+            <COLLECTION NAME=""AccziteLedgerDetails"" ISMODIFY=""No"">
+              <TYPE>Ledger</TYPE>
+              <FETCH>MASTERID, NAME, PARENT, CLOSINGBALANCE, MAILINGNAME, ADDRESS, STATENAME, PINCODE, INCOMETAXNUMBER, EMAIL, ISBILLWISEON, PARTYGSTIN, GSTREGISTRATIONTYPE, GSTAPPLICABILITY</FETCH>
             </COLLECTION>",
 
             // Fallback: request the named collection without a FETCH restriction

@@ -123,7 +123,7 @@ namespace Acczite20.Services.Sync
             set { _syncMode = value; OnPropertyChanged(); OnPropertyChanged(nameof(LiveMetricsSummary)); }
         }
 
-        private int _batchSize = 150; // Default matches standard cap
+        private int _batchSize = 50; // Conservative default — scheduler grows window if Tally is healthy
         public int BatchSize
         {
             get => _batchSize;

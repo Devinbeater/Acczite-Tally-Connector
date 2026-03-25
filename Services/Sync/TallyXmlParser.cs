@@ -123,6 +123,22 @@ namespace Acczite20.Services.Sync
         // Returns false when unbalanced — caller should route to Dead Letter Queue.
         public bool MergeVoucherDetail(XElement vNode, Acczite20.Models.Voucher voucher)
         {
+            var isCancelled = GetValue(vNode, "ISCANCELLED");
+            if (!string.IsNullOrEmpty(isCancelled))
+                voucher.IsCancelled = isCancelled.Equals("Yes", StringComparison.OrdinalIgnoreCase);
+
+            var isOptional = GetValue(vNode, "ISOPTIONAL");
+            if (!string.IsNullOrEmpty(isOptional))
+                voucher.IsOptional = isOptional.Equals("Yes", StringComparison.OrdinalIgnoreCase);
+
+            var refNum = GetValue(vNode, "REFERENCE");
+            if (!string.IsNullOrEmpty(refNum))
+                voucher.ReferenceNumber = refNum;
+
+            var narration = GetValue(vNode, "NARRATION");
+            if (!string.IsNullOrEmpty(narration))
+                voucher.Narration = narration;
+
             var orgId = voucher.OrganizationId;
             var inventoryKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -232,6 +248,22 @@ namespace Acczite20.Services.Sync
 
         public bool MergeLedgerEntries(XElement vNode, Acczite20.Models.Voucher voucher)
         {
+            var isCancelled = GetValue(vNode, "ISCANCELLED");
+            if (!string.IsNullOrEmpty(isCancelled))
+                voucher.IsCancelled = isCancelled.Equals("Yes", StringComparison.OrdinalIgnoreCase);
+
+            var isOptional = GetValue(vNode, "ISOPTIONAL");
+            if (!string.IsNullOrEmpty(isOptional))
+                voucher.IsOptional = isOptional.Equals("Yes", StringComparison.OrdinalIgnoreCase);
+
+            var refNum = GetValue(vNode, "REFERENCE");
+            if (!string.IsNullOrEmpty(refNum))
+                voucher.ReferenceNumber = refNum;
+
+            var narration = GetValue(vNode, "NARRATION");
+            if (!string.IsNullOrEmpty(narration))
+                voucher.Narration = narration;
+
             var orgId = voucher.OrganizationId;
             var inventoryKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -314,6 +346,22 @@ namespace Acczite20.Services.Sync
         // No integrity check — root-level inventory does not affect accounting balance.
         public void MergeInventoryEntries(XElement vNode, Acczite20.Models.Voucher voucher)
         {
+            var isCancelled = GetValue(vNode, "ISCANCELLED");
+            if (!string.IsNullOrEmpty(isCancelled))
+                voucher.IsCancelled = isCancelled.Equals("Yes", StringComparison.OrdinalIgnoreCase);
+
+            var isOptional = GetValue(vNode, "ISOPTIONAL");
+            if (!string.IsNullOrEmpty(isOptional))
+                voucher.IsOptional = isOptional.Equals("Yes", StringComparison.OrdinalIgnoreCase);
+
+            var refNum = GetValue(vNode, "REFERENCE");
+            if (!string.IsNullOrEmpty(refNum))
+                voucher.ReferenceNumber = refNum;
+
+            var narration = GetValue(vNode, "NARRATION");
+            if (!string.IsNullOrEmpty(narration))
+                voucher.Narration = narration;
+
             var inventoryKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var iNode in vNode.Descendants().Where(x =>

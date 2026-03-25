@@ -90,6 +90,7 @@ namespace Acczite20.Services.Sync
 
             var current        = from;
             int overloadRetries = 0;
+            int consecutiveFailures = 0;
 
             while (current <= to)
             {
@@ -163,17 +164,17 @@ namespace Acczite20.Services.Sync
                     // After 2 retries the time-window is at minimum — shrink the voucher cap too.
                     if (overloadRetries >= 2)
                     {
-                        _scheduler.ReduceVoucherCap();
+                        _scheduler.ReduceVoucherCapAndWindow();
                         _syncMonitor.AddLog(
-                            $"Voucher cap reduced to {_scheduler.MaxVouchersPerChunk} after {overloadRetries} overload retries.",
+                            $"Window heavily scaled after {overloadRetries} overload retries.",
                             "WARNING", "THROTTLE");
                     }
 
                     if (overloadRetries <= MaxOverloadRetries)
                     {
                         _syncMonitor.AddLog(
-                            $"Chunk overloaded ({overloadEx.VoucherCount} > {overloadEx.Limit}). " +
-                            $"Retry {overloadRetries}/{MaxOverloadRetries} | window {_scheduler.CurrentWindow.TotalHours:0.#}h | cap {_scheduler.MaxVouchersPerChunk}.",
+                            $"Density Guard triggers ({overloadEx.VoucherCount} > {overloadEx.Limit}). " +
+                            $"Retry {overloadRetries}/{MaxOverloadRetries} | window {_scheduler.CurrentWindow.TotalHours:0.#}h (Coarse Cap: {_scheduler.CoarseDensityLimit}).",
                             "WARNING", "THROTTLE");
                         overloaded = true;
                     }
@@ -203,17 +204,49 @@ namespace Acczite20.Services.Sync
                 {
                     channel.Writer.TryComplete(ex);
                     try { await writerTask; } catch { }
-                    throw;
+
+                    consecutiveFailures++;
+                    
+                    bool isTimeoutOrMemory = ex is TaskCanceledException || ex is System.Net.Http.HttpRequestException || ex.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("memory", StringComparison.OrdinalIgnoreCase);
+
+                    if (isTimeoutOrMemory)
+                    {
+                        _syncMonitor.AddLog($"Chunk failed: {ex.Message}. Consecutive Failures: {consecutiveFailures}", "WARNING", "SCHEDULER");
+                        
+                        if (consecutiveFailures >= 3)
+                        {
+                            _syncMonitor.AddLog("Multiple consecutive failures. Activating SAFE MODE.", "ERROR", "SCHEDULER");
+                            _scheduler.ActivateSafeMode();
+                            consecutiveFailures = 0; 
+                        }
+                        else
+                        {
+                            _scheduler.ReduceVoucherCapAndWindow();
+                        }
+                        overloaded = true; // Retry same boundaries
+                    }
+                    else
+                    {
+                        // Structural error or parsing error we cannot auto-recover
+                        throw;
+                    }
                 }
 
                 if (overloaded)
                 {
                     // Retry same start with smaller window — do NOT advance cursor.
+                    _syncMonitor.AddLog($"Retrying Date Range: {chunk.Start:yyyy-MM-dd HH:mm} to {chunkEnd:yyyy-MM-dd HH:mm}", "INFO", "SCHEDULER");
                     await Task.Yield();
                     continue;
                 }
 
                 overloadRetries = 0;
+                consecutiveFailures = 0;
+
+                double currentDensity = metrics.FetchedCount / Math.Max(1.0, _scheduler.CurrentWindow.TotalMinutes);
+                _syncMonitor.AddLog(
+                    $"[METRICS] Window: {_scheduler.CurrentWindow.TotalMinutes}m | Vouchers: {metrics.FetchedCount} | Density: {currentDensity:0.##}v/m | Resp: {metrics.Elapsed.TotalMilliseconds:0}ms | Status: Success | Retries: {overloadRetries}",
+                    "DEBUG", "METRICS");
                 await onChunkCompletedAsync(chunk, metrics, ct);
 
                 if (chunkEnd >= to) break;

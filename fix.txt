@@ -1,0 +1,247 @@
+        private async Task SyncLedgersFromXmlAsync(Guid orgId, AppDbContext dbContext)
+        {
+            try
+            {
+                string? response = null;
+                int[] retryDelaysMs = { 30_000, 60_000 };
+                for (int i = 1; i <= 3; i++)
+                {
+                    if (TallyXmlService.IsCircuitOpen())
+                    {
+                        var remaining = TallyXmlService.CircuitCooldownRemaining();
+                        _syncMonitor.AddLog($"Circuit breaker is OPEN. Waiting {remaining}s before ledger fetch attempt {i}...", "WARNING", "MASTERS");
+                        await Task.Delay(remaining * 1000);
+                    }
+
+                    try
+                    {
+                        _syncMonitor.AddLog($"Fetching ledger headers from Tally (attempt {i}/3)...", "INFO", "MASTERS");
+                        response = await _xmlService.ExportCollectionXmlAsync("AccziteLedgerHeaders", isCollection: true);
+                        if (!string.IsNullOrWhiteSpace(response)) break;
+
+                        if (i < 3)
+                        {
+                            var waitSec = retryDelaysMs[i - 1] / 1000;
+                            _syncMonitor.AddLog($"Tally returned empty ledger response. Retrying in {waitSec}s...", "WARNING", "MASTERS");
+                            await Task.Delay(retryDelaysMs[i - 1]);
+                        }
+                    }
+                    catch (Exception ex) when (i < 3)
+                    {
+                        var waitSec = retryDelaysMs[i - 1] / 1000;
+                        _logger.LogWarning($"Ledger fetch attempt {i} failed: {ex.Message}. Retrying in {waitSec}s...");
+                        await Task.Delay(retryDelaysMs[i - 1]);
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(response)) 
+                {
+                    throw new InvalidOperationException("Resilience Failure: Tally communication timed out or returned empty data for Ledgers.");
+                }
+
+                XDocument doc;
+                try
+                {
+                    var readerSettings = new System.Xml.XmlReaderSettings { CheckCharacters = false };
+                    using var sReader = new System.IO.StringReader(response);
+                    using var reader = System.Xml.XmlReader.Create(sReader, readerSettings);
+                    doc = XDocument.Load(reader);
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException("Tally returned malformed XML for ledgers.", ex);
+                }
+
+                var nodes = GetCollectionNodes(doc, "LEDGER"); // Headers only
+                if (nodes.Count == 0) return;
+
+                _syncMonitor.AddLog($"Fetched {nodes.Count} Ledger Headers. Syncing database...", "INFO", "MASTERS");
+                
+                var existingLedgers = await dbContext.Ledgers
+                    .Where(l => l.OrganizationId == orgId)
+                    .ToDictionaryAsync(l => l.TallyMasterId ?? l.Name);
+ 
+                foreach (var l in existingLedgers.Values) l.IsPresentInTally = false;
+                
+                var validGroups = await dbContext.AccountingGroups
+                    .Where(g => g.OrganizationId == orgId && !g.IsDeleted)
+                    .Select(g => g.Name)
+                    .ToListAsync();
+                var groupNames = new HashSet<string>(validGroups, StringComparer.OrdinalIgnoreCase);
+                
+                dbContext.ChangeTracker.AutoDetectChangesEnabled = false;
+
+                var validMasterIds = new List<string>();
+                int count = 0;
+
+                foreach (var node in nodes)
+                {
+                    string name = node.Element("NAME")?.Value ?? node.Attribute("NAME")?.Value ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+
+                    var ledger = ParseLedgerFromXml(node, orgId);
+                    string tallyId = ledger.TallyMasterId ?? name;
+                    
+                    if (!string.IsNullOrEmpty(ledger.TallyMasterId))
+                    {
+                        validMasterIds.Add(ledger.TallyMasterId);
+                    }
+ 
+                    if (existingLedgers.TryGetValue(tallyId, out var existing))
+                    {
+                        existing.Name = ledger.Name;
+                        existing.ParentGroup = ledger.ParentGroup;
+                        existing.UpdatedAt = DateTimeOffset.UtcNow;
+                        existing.IsPresentInTally = true;
+                        existing.IsActive = true;
+                        
+                        if (!string.IsNullOrEmpty(ledger.ParentGroup) && !groupNames.Contains(ledger.ParentGroup))
+                        {
+                             _syncMonitor.AddLog($"❌ CRITICAL: Ledger '{ledger.Name}' points to missing Group '{ledger.ParentGroup}'.", "ERROR", "MASTERS");
+                             throw new InvalidOperationException($"Referential Integrity Breach: Ledger '{ledger.Name}' references a Group.");
+                        }
+
+                        if (Math.Abs(existing.OpeningBalance - ledger.OpeningBalance) > 0.01m)
+                        {
+                            existing.OpeningBalance = ledger.OpeningBalance;
+                        }
+                        if (Math.Abs(existing.ClosingBalance - ledger.ClosingBalance) > 0.01m)
+                        {
+                            existing.ClosingBalance = ledger.ClosingBalance;
+                        }
+                    }
+                    else
+                    {
+                        ledger.Id = Guid.NewGuid();
+                        ledger.CreatedAt = DateTimeOffset.UtcNow;
+                        ledger.UpdatedAt = DateTimeOffset.UtcNow;
+                        await dbContext.Ledgers.AddAsync(ledger);
+                        existingLedgers[tallyId] = ledger;
+                    }
+                    
+                    count++;
+                    if (count % 1000 == 0) await dbContext.SaveChangesAsync();
+                }
+                
+                await dbContext.SaveChangesAsync();
+
+                // PHASE 2: BATCH ENRICHMENT
+                int batchSize = _syncMonitor.SyncMode == "Safe" ? 25 : 50; 
+                int enrichDelayMs = _syncMonitor.SyncMode == "Safe" ? 3000 : 500;
+                _syncMonitor.AddLog($"Starting Ledger Enrichment in batches of {batchSize}...", "INFO", "MASTERS");
+
+                var batches = validMasterIds.Select((id, index) => new { id, index })
+                                            .GroupBy(x => x.index / batchSize)
+                                            .Select(g => g.Select(x => x.id).ToList())
+                                            .ToList();
+
+                int enrichedCount = 0;
+                for (int i = 0; i < batches.Count; i++)
+                {
+                    var batch = batches[i];
+                    string idList = string.Join(",", batch);
+
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    var detailXml = await _xmlService.ExportCollectionXmlAsync("AccziteLedgerDetails", isCollection: true, idList: idList);
+                    sw.Stop();
+
+                    if (sw.ElapsedMilliseconds > 8000)
+                    {
+                        _syncMonitor.TallyHealth = "Cooldown";
+                        _syncMonitor.AddLog($"Ledger enrichment ({sw.ElapsedMilliseconds}ms). Cooling down for 60s...", "WARNING", "MASTERS");
+                        await Task.Delay(60000);
+                    }
+                    else if (i < batches.Count - 1)
+                    {
+                        await Task.Delay(enrichDelayMs);
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(detailXml))
+                    {
+                        try
+                        {
+                            var dSettings = new System.Xml.XmlReaderSettings { CheckCharacters = false };
+                            using var sReader = new System.IO.StringReader(detailXml);
+                            using var dReader = System.Xml.XmlReader.Create(sReader, dSettings);
+                            var dDoc = XDocument.Load(dReader);
+                            
+                            var dNodes = GetCollectionNodes(dDoc, "LEDGER");
+                            
+                            foreach (var dNode in dNodes)
+                            {
+                                var masterId = dNode.Element("MASTERID")?.Value ?? string.Empty;
+                                if (string.IsNullOrEmpty(masterId)) continue;
+                                
+                                if (existingLedgers.TryGetValue(masterId, out var existing))
+                                {
+                                    var detailLedger = ParseLedgerFromXml(dNode, orgId);
+                                    
+                                    existing.GstApplicability = detailLedger.GstApplicability;
+                                    existing.GstRegistrationType = detailLedger.GstRegistrationType;
+                                    existing.GstIn = detailLedger.GstIn;
+                                    existing.PartyGstIn = detailLedger.PartyGstIn;
+                                    existing.IncomeTaxNumber = detailLedger.IncomeTaxNumber;
+                                    existing.LedgerStateName = detailLedger.LedgerStateName;
+                                    existing.Email = detailLedger.Email;
+                                    existing.IsBillWiseOn = detailLedger.IsBillWiseOn;
+                                    existing.LedgerContact = detailLedger.LedgerContact;
+                                    
+                                    var addressNodes = dNode.Descendants("ADDRESS.LIST")
+                                        .SelectMany(x => x.Descendants("ADDRESS"))
+                                        .Select(x => x.Value);
+                                    existing.Address = string.Join(", ", addressNodes);
+
+                                    enrichedCount++;
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, $"Failed to parse enrichment batch {i+1}");
+                        }
+                    }
+
+                    if (i % 5 == 0) await dbContext.SaveChangesAsync();
+                    
+                    if (i % 2 == 0)
+                    {
+                        _syncMonitor.ProgressPercent = 5.0 + ((double)i / batches.Count * 20.0);
+                        _syncMonitor.AddLog($"Enriched {enrichedCount}/{validMasterIds.Count} Ledgers...", "INFO", "MASTERS");
+                    }
+                }
+
+                await dbContext.SaveChangesAsync();
+
+                var deactivatedLedgers = 0;
+                foreach (var l in existingLedgers.Values.Where(v => !v.IsPresentInTally && v.IsActive))
+                {
+                    l.IsActive = false; // Deactivate
+                    deactivatedLedgers++;
+                }
+                await dbContext.SaveChangesAsync();
+                
+                bool isMongo = string.Equals(SessionManager.Instance.SelectedDatabaseType, "MongoDB", StringComparison.OrdinalIgnoreCase);
+                if (isMongo)
+                {
+                    _syncMonitor.AddLog("Syncing Ledgers to MongoDB...", "INFO", "MASTERS");
+                    var allLedgers = existingLedgers.Values.ToList();
+                    for (int n = 0; n < allLedgers.Count; n += 500)
+                    {
+                        var chunk = allLedgers.Skip(n).Take(500).Select(BuildLedgerMongoBson).ToList();
+                        await _mongoService.BulkUpsertDocumentsAsync("ledgers", chunk, "TallyMasterId");
+                    }
+                }
+
+                _syncMonitor.AddLog($"Phase 2 Complete: Synced {nodes.Count} Ledgers ({enrichedCount} enriched, {deactivatedLedgers} removed).", "SUCCESS", "MASTERS");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error syncing Ledgers via XML");
+                _syncMonitor.AddLog($"❌ XML Ledger sync failed: {ex.Message}", "ERROR", "MASTERS");
+                throw;
+            }
+            finally
+            {
+                dbContext.ChangeTracker.AutoDetectChangesEnabled = true; // Re-enable always
+            }
+        }

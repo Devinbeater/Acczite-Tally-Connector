@@ -250,8 +250,7 @@ new_func = """        private async Task SyncLedgersFromXmlAsync(Guid orgId, App
             {
                 dbContext.ChangeTracker.AutoDetectChangesEnabled = true; // Re-enable always
             }
-        }
-"""
+        }\n"""
 lines = lines[:337] + [new_func] + lines[569:]
 with open(target, 'w', encoding='utf-8') as f:
     f.writelines(lines)
