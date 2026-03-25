@@ -486,7 +486,7 @@ namespace Acczite20.Services.Sync
                 ? _syncMonitor.BatchSize
                 : 50;
 
-            var scheduler = new VoucherSyncChunkScheduler(TimeSpan.FromMinutes(30));
+            var scheduler = new VoucherSyncChunkScheduler(TimeSpan.FromHours(6));
             var executor = new TallyVoucherRequestExecutor(_tallyService, _xmlParser, scheduler, _syncMonitor);
             var dbWriter = new VoucherSyncDbWriter(orgId, _scopeFactory, _syncMonitor, progress, sw);
             var controller = new VoucherSyncController(scheduler, executor, dbWriter, progress, _syncMonitor, _tallyService);

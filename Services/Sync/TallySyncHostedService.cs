@@ -39,6 +39,10 @@ namespace Acczite20.Services.Sync
                 await Task.Delay(2000, stoppingToken);
             }
 
+            // Give Tally time to fully initialize before first background sync
+            _stateMonitor.AddLog("Waiting 30s before first background sync to let Tally stabilize...", "INFO");
+            await Task.Delay(30_000, stoppingToken);
+
             while (!stoppingToken.IsCancellationRequested)
             {
                 if (_syncInProgress)
@@ -50,11 +54,16 @@ namespace Acczite20.Services.Sync
                     _syncInProgress = true;
                     try
                     {
-                        _stateMonitor.AddLog("Starting background sync cycle...", "DEBUG");
+                        var msg = "Starting background sync cycle...";
+                        _stateMonitor.AddLog(msg, "DEBUG");
+                        System.Windows.Application.Current?.Dispatcher.Invoke(() => ((App)System.Windows.Application.Current).LogBreadcrumb($"[BackgroundSync] {msg}"));
+
                         using var scope = _scopeFactory.CreateScope();
                         var orchestrator = scope.ServiceProvider.GetRequiredService<TallySyncOrchestrator>();
                         await orchestrator.RunSyncCycleAsync(stoppingToken);
+
                         _stateMonitor.AddLog("Sync cycle successful.", "SUCCESS");
+                        System.Windows.Application.Current?.Dispatcher.Invoke(() => ((App)System.Windows.Application.Current).LogBreadcrumb("[BackgroundSync] Sync cycle successful."));
                     }
                     catch (OperationCanceledException)
                     {

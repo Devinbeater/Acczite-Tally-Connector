@@ -73,11 +73,15 @@ namespace Acczite20.Services.Sync
             await PopulateDimGroupsAsync(organizationId);
             _syncMonitor.AddLog($"âœ… Accounting Groups synced and DimGroups populated.", "SUCCESS", "MASTERS");
 
+            // Mandatory cooldown between phases - gives Tally GC time to release memory
+            await Task.Delay(3000);
             // â”€â”€â”€ Phase 2: Ledgers (depends on Groups for parent resolution) â”€â”€â”€
             _syncMonitor.AddLog("Master Sync: Phase 2 â€” Ledgers", "INFO", "MASTERS");
             await SyncLedgersAsync(organizationId, dbContext);
             await PopulateDimLedgersAsync(organizationId);
             _syncMonitor.AddLog($"âœ… Ledgers synced and DimLedgers populated.", "SUCCESS", "MASTERS");
+
+            await Task.Delay(3000);
 
             // â”€â”€â”€ Phase 3: Currencies â”€â”€â”€
             _syncMonitor.AddLog("Master Sync: Phase 3 â€” Currencies", "INFO", "MASTERS");
@@ -89,6 +93,8 @@ namespace Acczite20.Services.Sync
                 Symbol = element.Element("MAILINGNAME")?.Value ?? string.Empty
             });
 
+            await Task.Delay(2000);
+
             // â”€â”€â”€ Phase 4: Voucher Types â”€â”€â”€
             _syncMonitor.AddLog("Master Sync: Phase 4 â€” Voucher Types", "INFO", "MASTERS");
             await SyncXmlCollectionAsync<VoucherType>(organizationId, "List of Voucher Types", "VOUCHERTYPE", element => new VoucherType
@@ -99,10 +105,14 @@ namespace Acczite20.Services.Sync
             });
             await PopulateDimVoucherTypesAsync(organizationId);
 
+            await Task.Delay(3000);
+
             // â”€â”€â”€ Phase 5: Stock Groups + Stock Categories + Stock Items â”€â”€â”€
             _syncMonitor.AddLog("Master Sync: Phase 5 â€” Stock Masters", "INFO", "MASTERS");
             await SyncStockGroupsAsync(organizationId, dbContext);
+            await Task.Delay(2000);
             await SyncStockCategoriesAsync(organizationId, dbContext);
+            await Task.Delay(2000);
             await SyncStockItemsAsync(organizationId, dbContext);
             await PopulateDimStockItemsAsync(organizationId);
 

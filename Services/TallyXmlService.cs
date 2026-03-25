@@ -118,7 +118,7 @@ namespace Acczite20.Services
             // Export client — with two-pass chunking each request is a fraction of the old
             // single-pass payload. 10 minutes (600s) is required for massive initial Header fetches.
             // Fail-fast on hang: a stalled Tally is worse than a retried smaller chunk.
-            _exportHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(600) };
+            _exportHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
 
             _syncMonitor = syncMonitor;
         }
@@ -375,8 +375,12 @@ namespace Acczite20.Services
 
         public async Task<string?> ExportCollectionXmlAsync(string collectionOrReport, DateTimeOffset? fromDate = null, DateTimeOffset? toDate = null, bool isCollection = true, string? idList = null)
         {
-            var from = (fromDate ?? DateTimeOffset.Now.AddYears(-5)).ToString("yyyyMMdd");
-            var to = (toDate ?? DateTimeOffset.Now).ToString("yyyyMMdd");
+            // Master data (Groups, Ledgers, VoucherTypes, Currencies) does NOT need date ranges.
+            // Requesting OPENINGBALANCE with a 5-year span forces Tally to recompute balances
+            // for every ledger across that entire period — this causes OOM crashes.
+            // Only pass dates when explicitly provided (i.e., for voucher-type requests).
+            var from = fromDate?.ToString("yyyyMMdd");
+            var to = toDate?.ToString("yyyyMMdd");
             
             string envelope;
             if (isCollection)
@@ -1116,6 +1120,10 @@ namespace Acczite20.Services
                 if (envelope.Length < 5000) System.IO.File.WriteAllText("tally_request.xml", envelope);
             } catch { }
 
+            if (_tallyGate.CurrentCount == 0)
+            {
+                _syncMonitor?.AddLog("Waiting for Tally Gate (sync)...", "DEBUG", "TALLY");
+            }
             await _tallyGate.WaitAsync();
             try
             {

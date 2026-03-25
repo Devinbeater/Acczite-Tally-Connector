@@ -421,11 +421,26 @@ namespace Acczite20.Services.Sync
 
         public void AddLog(string message, string level = "INFO", string module = "SYSTEM")
         {
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            var app = System.Windows.Application.Current;
+            if (app == null)
             {
-                Logs.Insert(0, new SyncLogViewModel { Message = message, Level = level, Module = module });
-                if (Logs.Count > 100) Logs.RemoveAt(100);
-            });
+                // Fallback for non-UI environments or early startup
+                return;
+            }
+
+            try
+            {
+                app.Dispatcher.BeginInvoke(() =>
+                {
+                    try
+                    {
+                        Logs.Insert(0, new SyncLogViewModel { Message = message, Level = level, Module = module });
+                        if (Logs.Count > 100) Logs.RemoveAt(100);
+                    }
+                    catch { /* Ignore collection update errors during shutdown */ }
+                });
+            }
+            catch { /* Ignore dispatcher errors */ }
         }
 
         protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
