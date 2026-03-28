@@ -1,0 +1,30 @@
+﻿C:\vaibhav\tallyAcczite\Services\TallyXmlService.cs(215,22): error CS0103: The name 'IsUnresolvedCompany' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\TallyXmlService.cs(222,22): error CS0103: The name 'IsUnresolvedCompany' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\TallyXmlService.cs(229,24): error CS0103: The name 'IsUnresolvedCompany' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\Sync\VoucherSyncDbWriter.cs(35,13): error CS0103: The name '_runStopwatch' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\Sync\VoucherSyncDbWriter.cs(83,98): error CS0103: The name '_runStopwatch' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\App.xaml.cs(340,35): error CS1061: 'IMongoProjector' does not contain a definition for 'DrainFallbackQueueAsync' and no accessible extension method 'DrainFallbackQueueAsync' accepting a first argument of type 'IMongoProjector' could be found (are you missing a using directive or an assembly reference?) [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\TallyXmlService.cs(395,18): error CS0103: The name 'IsUnresolvedCompany' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\TallyXmlService.cs(402,30): error CS0103: The name 'IsUnresolvedCompany' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\Sync\MongoProjector.cs(57,49): error CS0246: The type or namespace name 'MongoProjectionQueue' could not be found (are you missing a using directive or an assembly reference?) [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\Sync\VoucherSyncDbWriter.cs(107,30): error CS1061: 'Voucher' does not contain a definition for 'PartyLedgerName' and no accessible extension method 'PartyLedgerName' accepting a first argument of type 'Voucher' could be found (are you missing a using directive or an assembly reference?) [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\TallyXmlService.cs(799,21): error CS0103: The name 'IsUnresolvedCompany' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\Sync\TallySyncOrchestrator.cs(126,13): error CS0103: The name '_lockProvider' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\Sync\TallySyncOrchestrator.cs(165,23): error CS0103: The name '_lockProvider' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\Sync\TallySyncOrchestrator.cs(173,27): error CS0103: The name '_lockProvider' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\Sync\TallyMasterSyncService.cs(205,61): error CS0117: 'StockItem' does not contain a definition for 'StockGroupName' [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\TallyXmlService.cs(1256,22): error CS0103: The name 'IsUnresolvedCompany' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\TallyXmlService.cs(1266,22): error CS0103: The name 'IsUnresolvedCompany' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\TallyXmlService.cs(1283,22): error CS0103: The name 'IsUnresolvedCompany' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\TallyXmlService.cs(1291,43): error CS0103: The name 'IsUnresolvedCompany' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\Sync\TallySyncOrchestrator.cs(486,32): error CS0103: The name '_lockProvider' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\Sync\TallySyncOrchestrator.cs(590,31): error CS0103: The name '_lockProvider' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\Sync\TallySyncOrchestrator.cs(846,23): error CS0103: The name '_lockProvider' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\Sync\TallySyncOrchestrator.cs(859,33): error CS0103: The name '_lockProvider' does not exist in the current context [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+C:\vaibhav\tallyAcczite\Services\Sync\TallySyncOrchestrator.cs(1103,57): error CS1061: 'Voucher' does not contain a definition for 'ToBsonDocument' and no accessible extension method 'ToBsonDocument' accepting a first argument of type 'Voucher' could be found (are you missing a using directive or an assembly reference?) [C:\vaibhav\tallyAcczite\Acczite20_rcfynvvj_wpftmp.csproj]
+
+Build FAILED.
+    269 Warning(s)
+    24 Error(s)
+
+Time Elapsed 00:00:03.77

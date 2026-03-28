@@ -23,6 +23,7 @@ namespace Acczite20.Models
         public decimal LastSumCredit { get; set; }
         public int LastLedgerCount { get; set; }
         public string? LedgerHash { get; set; }
+        public string? EntityHash { get; set; }
         public int SyncSchemaVersion { get; set; }
 
         // ── Crash Recovery & Health ──

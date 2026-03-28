@@ -16,8 +16,9 @@ namespace Acczite20.Services.Sync
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly SyncStateMonitor _syncMonitor;
         private readonly VoucherSyncProgressAggregator _progress;
-        private readonly System.Diagnostics.Stopwatch _runStopwatch;
+        private readonly IMongoProjector _projector;
         private readonly int _batchSize;
+        private readonly System.Diagnostics.Stopwatch _runStopwatch;
 
         public VoucherSyncDbWriter(
             Guid orgId,
@@ -25,6 +26,7 @@ namespace Acczite20.Services.Sync
             SyncStateMonitor syncMonitor,
             VoucherSyncProgressAggregator progress,
             System.Diagnostics.Stopwatch runStopwatch,
+            IMongoProjector projector,
             int batchSize = 500)
         {
             _orgId = orgId;
@@ -32,6 +34,7 @@ namespace Acczite20.Services.Sync
             _syncMonitor = syncMonitor;
             _progress = progress;
             _runStopwatch = runStopwatch;
+            _projector = projector;
             _batchSize = batchSize;
         }
 
@@ -71,6 +74,12 @@ namespace Acczite20.Services.Sync
             await handler.BulkInsertVouchersAsync(vouchersToWrite);
             sw.Stop();
 
+            // Project to Mongo (Decoupled & Eventually Consistent)
+            foreach (var v in vouchersToWrite)
+            {
+                _projector.Project("vouchers", ToBsonDocument(v));
+            }
+
             _progress.RecordWritten(vouchersToWrite.Count);
             _syncMonitor.RecordInsertedBatch(vouchersToWrite.Count, ledgerCount, inventoryCount, _runStopwatch.Elapsed.TotalSeconds);
 
@@ -85,6 +94,22 @@ namespace Acczite20.Services.Sync
             {
                 ct.ThrowIfCancellationRequested();
             }
+        }
+        private static MongoDB.Bson.BsonDocument ToBsonDocument(Voucher v)
+        {
+            var doc = new MongoDB.Bson.BsonDocument
+            {
+                { "organizationId", v.OrganizationId.ToString() },
+                { "tallyMasterId", v.TallyMasterId ?? string.Empty },
+                { "voucherNumber", v.VoucherNumber ?? string.Empty },
+                { "date", v.VoucherDate.ToString("yyyy-MM-dd") },
+                { "type", v.VoucherType?.Name ?? "Journal" },
+                { "amount", (double)Math.Abs(v.LedgerEntries.Where(le => le.DebitAmount > 0).Sum(le => le.DebitAmount)) },
+                { "party", "Unknown" },
+                { "isCancelled", v.IsCancelled },
+                { "updatedAt", DateTime.UtcNow.ToString("O") }
+            };
+            return doc;
         }
     }
 }

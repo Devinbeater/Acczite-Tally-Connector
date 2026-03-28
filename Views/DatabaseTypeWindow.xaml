@@ -6,7 +6,8 @@
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
         Background="#FFF9F9F9"
-        WindowStyle="SingleBorderWindow">
+        WindowStyle="SingleBorderWindow"
+        Icon="/Assets/app.ico">
 
 	<Grid Margin="20">
 		<Grid.RowDefinitions>

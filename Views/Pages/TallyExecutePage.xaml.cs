@@ -20,6 +20,7 @@ namespace Acczite20.Views.Pages
         private readonly INavigationService _navigationService;
         private readonly SyncStateMonitor _syncMonitor;
         private readonly TallySyncOrchestrator _orchestrator;
+        private readonly ISyncControlService _control;
         private CancellationTokenSource? _syncCts;
         private bool _monitorHandlersAttached;
 
@@ -36,6 +37,7 @@ namespace Acczite20.Views.Pages
             var serviceProvider = ((App)Application.Current).ServiceProvider;
             _syncMonitor = serviceProvider.GetRequiredService<SyncStateMonitor>();
             _orchestrator = serviceProvider.GetRequiredService<TallySyncOrchestrator>();
+            _control = serviceProvider.GetRequiredService<ISyncControlService>();
 
             Summary = BuildSummary(selectedFields);
 
@@ -215,14 +217,35 @@ namespace Acczite20.Views.Pages
                 return;
             }
 
+            var orgId = SessionManager.Instance.OrganizationId;
             try
             {
-                if (SessionManager.Instance.OrganizationId == Guid.Empty && string.IsNullOrWhiteSpace(SessionManager.Instance.OrganizationObjectId))
+                if (orgId == Guid.Empty && string.IsNullOrWhiteSpace(SessionManager.Instance.OrganizationObjectId))
                 {
                     await CustomDialog.ShowAsync(
                         "Organization Required",
                         "Please select a valid organization before starting a synchronization.",
                         CustomDialog.DialogType.Warning);
+                    return;
+                }
+
+                if (!_control.TryStart(orgId, SyncOwner.Manual))
+                {
+                    var status = _control.GetState(orgId);
+                    if (status.Owner == SyncOwner.HostedService)
+                    {
+                        await CustomDialog.ShowAsync(
+                            "Background Sync Active",
+                            "Background sync is currently processing. Please wait for it to finish or stop it from the dashboard.",
+                            CustomDialog.DialogType.Warning);
+                    }
+                    else
+                    {
+                        await CustomDialog.ShowAsync(
+                            "Sync Active",
+                            "A synchronization cycle is already running for this organization.",
+                            CustomDialog.DialogType.Warning);
+                    }
                     return;
                 }
 
@@ -248,6 +271,15 @@ namespace Acczite20.Views.Pages
                 RefreshExecutionUi();
                 await _orchestrator.RunFullSyncAsync(SessionManager.Instance.OrganizationId, fromDate, toDate, _syncCts.Token, _selectedTallyCollections);
                 RefreshExecutionUi();
+                if (string.Equals(_syncMonitor.CurrentStage, "Sync failed", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(_syncMonitor.CurrentStageDetail ?? "Tally connection failed or sync error.");
+                }
+                
+                if (string.Equals(_syncMonitor.CurrentStage, "Sync cancelled", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new OperationCanceledException();
+                }
 
                 var dialog = new TallySyncCompleteDialog
                 {
@@ -280,8 +312,11 @@ namespace Acczite20.Views.Pages
             }
             finally
             {
+                var state = _control.GetState(orgId);
+                state.Status = SyncLifecycle.Idle;
+                state.Owner = SyncOwner.None;
+                
                 SyncButton.IsEnabled = !_syncMonitor.IsSyncing;
-                _syncCts?.Dispose();
                 _syncCts = null;
             }
         }
@@ -292,11 +327,21 @@ namespace Acczite20.Views.Pages
             BatchSizePanel.Visibility = SyncModeCombo.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        private void PauseButton_Click(object sender, RoutedEventArgs e)
+        private async void PauseButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_syncMonitor == null) return;
-            _syncMonitor.IsPaused = !_syncMonitor.IsPaused;
-            PauseButton.Content = _syncMonitor.IsPaused ? "Resume" : "Pause";
+            var orgId = SessionManager.Instance.OrganizationId;
+            var state = _control.GetState(orgId);
+            
+            if (state.IsPaused)
+            {
+                _control.Resume(orgId);
+                PauseButton.Content = "Pause";
+            }
+            else
+            {
+                await _control.PauseAsync(orgId);
+                PauseButton.Content = "Resume";
+            }
         }
 
         private void ForceCooldown_Click(object sender, RoutedEventArgs e)

@@ -1,1519 +1,279 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Xml.Linq;
-using Acczite20.Data;
 using Acczite20.Models;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
+using Acczite20.Services.Tally;
 using Microsoft.Extensions.Logging;
-
-using MongoDB.Bson;
 
 namespace Acczite20.Services.Sync
 {
-    public class MasterIntegrityResult
-    {
-        public bool IsValid { get; set; }
-        public string ErrorMessage { get; set; } = string.Empty;
-        public int GroupCount { get; set; }
-        public int LedgerCount { get; set; }
-        public int VoucherTypeCount { get; set; }
-    }
-
     public class TallyMasterSyncService
     {
-        private readonly TallyXmlService _xmlService;
-        private readonly TallyOdbcImporter _odbcImporter;
-        private readonly IServiceScopeFactory _scopeFactory;
-        private readonly ILogger<TallyMasterSyncService> _logger;
-        private readonly MongoService _mongoService;
+        private readonly TallyXmlService _xml;
+        private readonly IMasterRepository _repo;
+        private readonly ISyncMetadataService _meta;
+        private readonly ILogger<TallyMasterSyncService> _log;
         private readonly SyncStateMonitor _syncMonitor;
+        private readonly ISyncControlService _syncControl;
 
         public TallyMasterSyncService(
-            TallyXmlService xmlService,
-            TallyOdbcImporter odbcImporter,
-            IServiceScopeFactory scopeFactory,
-            ILogger<TallyMasterSyncService> logger,
-            MongoService mongoService,
-            SyncStateMonitor syncMonitor)
+            TallyXmlService xml,
+            IMasterRepository repo,
+            ISyncMetadataService meta,
+            ILogger<TallyMasterSyncService> log,
+            SyncStateMonitor syncMonitor,
+            ISyncControlService syncControl)
         {
-            _xmlService = xmlService;
-            _odbcImporter = odbcImporter;
-            _scopeFactory = scopeFactory;
-            _logger = logger;
-            _mongoService = mongoService;
+            _xml = xml;
+            _repo = repo;
+            _meta = meta;
+            _log = log;
             _syncMonitor = syncMonitor;
+            _syncControl = syncControl;
         }
 
-        private AppDbContext GetContext(IServiceProvider sp) => sp.GetRequiredService<AppDbContext>();
-
-        // Session-scoped DbContext â€” set once per SyncAllMastersAsync call.
-        // Private helper methods use this field directly. Safe because the
-        // ISyncLockProvider prevents concurrent sync sessions on the same instance.
-        private AppDbContext? _context;
-        private AppDbContext RequireContext() =>
-            _context ?? throw new InvalidOperationException("Sync context has not been initialized.");
-
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // MAIN ENTRY POINT â€” strict order: Groups â†’ Ledgers â†’ VoucherTypes â†’ Stock
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        public async Task SyncAllMastersAsync(Guid organizationId, IEnumerable<string>? requestedPhases = null)
+        public async Task SyncAllMastersAsync(Guid orgId, bool force = false, CancellationToken ct = default)
         {
-            using var scope = _scopeFactory.CreateScope();
-            var dbContext = GetContext(scope.ServiceProvider);
-            _context = dbContext; // Bind session context for private helper methods
-            
-            var phases = requestedPhases?.ToList() ?? new List<string>();
-            bool syncAll = !phases.Any();
+            _log.LogInformation("Master Sync Started for {Org}", orgId);
+            _syncMonitor.AddLog($"Starting Deterministic Master Sync for Org: {orgId}", "INFO", "MASTERS");
 
-            _logger.LogInformation("Starting Master Data Sync (Selective/Incremental)...");
+            // ORDER = STRICT DEPENDENCY GRAPH
+            await SyncPhase("Groups", orgId, () => SyncGroupsAsync(orgId, force, ct), ct);
+            await SyncPhase("Ledgers", orgId, () => SyncLedgersAsync(orgId, force, ct), ct);
+            await SyncPhase("VoucherTypes", orgId, () => SyncVoucherTypesAsync(orgId, force, ct), ct);
 
-            // --- Phase 1: Accounting Groups ---
-            if (syncAll || phases.Contains("Groups", StringComparer.OrdinalIgnoreCase) || phases.Contains("Accounting Groups", StringComparer.OrdinalIgnoreCase))
-            {
-                _syncMonitor.AddLog("Master Sync: Phase 1 — Accounting Groups", "INFO", "MASTERS");
-                await SyncAccountingGroupsAsync(organizationId, dbContext);
-                await PopulateDimGroupsAsync(organizationId);
-                _syncMonitor.AddLog($"✅ Accounting Groups synced.", "SUCCESS", "MASTERS");
-                await Task.Delay(2000);
-            }
+            await SyncPhase("Units", orgId, () => SyncUnitsAsync(orgId, force, ct), ct);
+            await SyncPhase("Godowns", orgId, () => SyncGodownsAsync(orgId, force, ct), ct);
 
-            // --- Phase 2: Ledgers ---
-            if (syncAll || phases.Contains("Ledgers", StringComparer.OrdinalIgnoreCase))
-            {
-                // Dependency: Ensure groups exist
-                var groupCount = await dbContext.AccountingGroups.CountAsync(g => g.OrganizationId == organizationId);
-                if (groupCount == 0) 
-                {
-                    _syncMonitor.AddLog("Dependency: Syncing Groups before Ledgers...", "INFO", "MASTERS");
-                    await SyncAccountingGroupsAsync(organizationId, dbContext);
-                }
+            await SyncPhase("StockGroups", orgId, () => SyncStockGroupsAsync(orgId, force, ct), ct);
+            await SyncPhase("StockItems", orgId, () => SyncStockItemsAsync(orgId, force, ct), ct);
 
-                _syncMonitor.AddLog("Master Sync: Phase 2 — Ledgers", "INFO", "MASTERS");
-                await SyncLedgersAsync(organizationId, dbContext);
-                await PopulateDimLedgersAsync(organizationId);
-                _syncMonitor.AddLog($"✅ Ledgers synced.", "SUCCESS", "MASTERS");
-                await Task.Delay(2000);
-            }
+            await SyncPhase("CostCategories", orgId, () => SyncCostCategoriesAsync(orgId, force, ct), ct);
+            await SyncPhase("CostCentres", orgId, () => SyncCostCentresAsync(orgId, force, ct), ct);
 
-            // --- Phase 3: Currencies ---
-            if (syncAll || phases.Contains("Currencies", StringComparer.OrdinalIgnoreCase))
-            {
-                _syncMonitor.AddLog("Master Sync: Phase 3 — Currencies", "INFO", "MASTERS");
-                await SyncXmlCollectionAsync<Currency>(organizationId, "List of Currencies", "CURRENCY", element => new Currency
-                {
-                    OrganizationId = organizationId,
-                    Name = element.Element("NAME")?.Value ?? string.Empty,
-                    FormalName = element.Element("FORMALNAME")?.Value ?? string.Empty,
-                    Symbol = element.Element("MAILINGNAME")?.Value ?? string.Empty
-                });
-                await Task.Delay(1000);
-            }
-
-            // --- Phase 4: Voucher Types ---
-            if (syncAll || phases.Contains("Voucher Types", StringComparer.OrdinalIgnoreCase) || phases.Contains("VoucherTypes", StringComparer.OrdinalIgnoreCase))
-            {
-                _syncMonitor.AddLog("Master Sync: Phase 4 — Voucher Types", "INFO", "MASTERS");
-                await SyncXmlCollectionAsync<VoucherType>(organizationId, "VoucherType", "VOUCHERTYPE", true, element => new VoucherType
-                {
-                    OrganizationId = organizationId,
-                    Name = GetValue(element, "NAME"),
-                    Category = GetValue(element, "PARENT")
-                });
-                await PopulateDimVoucherTypesAsync(organizationId);
-                await Task.Delay(1000);
-            }
-
-            // --- Phase 5: Stock Masters ---
-            if (syncAll || phases.Contains("Stock", StringComparer.OrdinalIgnoreCase) || phases.Contains("Stock Items", StringComparer.OrdinalIgnoreCase))
-            {
-                _syncMonitor.AddLog("Master Sync: Phase 5 — Stock Masters", "INFO", "MASTERS");
-                await SyncStockGroupsAsync(organizationId, dbContext);
-                await Task.Delay(1000);
-                await SyncStockCategoriesAsync(organizationId, dbContext);
-                await Task.Delay(1000);
-                await SyncStockItemsAsync(organizationId, dbContext);
-                await PopulateDimStockItemsAsync(organizationId);
-                await Task.Delay(1000);
-            }
-
-            // --- Phase 6: Auto-mapping ---
-            if (syncAll || phases.Contains("Mapping", StringComparer.OrdinalIgnoreCase))
-            {
-                _syncMonitor.AddLog("Master Sync: Phase 6 — Auto-mapping Ledgers", "INFO", "MASTERS");
-                await AutoMapLedgersAsync(organizationId);
-                await Task.Delay(1000);
-            }
-
-            // --- Phase 8: Balance Sheet ---
-            if (syncAll || phases.Contains("Balance Sheet", StringComparer.OrdinalIgnoreCase) || phases.Contains("BS", StringComparer.OrdinalIgnoreCase))
-            {
-                _syncMonitor.AddLog("Master Sync: Phase 8 - Balance Sheet Groups", "INFO", "MASTERS");
-                await SyncBalanceSheetGroupsAsync(organizationId, dbContext);
-                await Task.Delay(1000);
-            }
-
-            // --- Phase 9: P&L ---
-            if (syncAll || phases.Contains("Profit & Loss", StringComparer.OrdinalIgnoreCase) || phases.Contains("P&L", StringComparer.OrdinalIgnoreCase) || phases.Contains("PL", StringComparer.OrdinalIgnoreCase))
-            {
-                _syncMonitor.AddLog("Master Sync: Phase 9 - Profit & Loss Groups", "INFO", "MASTERS");
-                await SyncProfitLossGroupsAsync(organizationId, dbContext);
-                await Task.Delay(1000);
-            }
-
-            // --- Phase 10: Banking ---
-            if (syncAll || phases.Contains("Banking", StringComparer.OrdinalIgnoreCase))
-            {
-                _syncMonitor.AddLog("Master Sync: Phase 10 - Banking Ledgers", "INFO", "MASTERS");
-                await SyncBankingLedgersAsync(organizationId, dbContext);
-                await Task.Delay(1000);
-            }
-
-            // --- Phase 11: Stock Summary ---
-            if (syncAll || phases.Contains("Stock Summary", StringComparer.OrdinalIgnoreCase))
-            {
-                _syncMonitor.AddLog("Master Sync: Phase 11 - Stock Summary", "INFO", "MASTERS");
-                await SyncStockSummaryAsync(organizationId, dbContext);
-                await Task.Delay(1000);
-            }
-
-            // --- Phase 7: Integrity Validation ---
-            if (syncAll || phases.Contains("Validation", StringComparer.OrdinalIgnoreCase))
-            {
-                _syncMonitor.AddLog("Master Sync: Phase 7 — Integrity Validation", "INFO", "MASTERS");
-                await ValidateIntegrityAsync(organizationId);
-            }
-
-            _logger.LogInformation("Master Data Sync Completed.");
-            _syncMonitor.AddLog("✅ Master Data Sync Cycle Finished.", "SUCCESS", "MASTERS");
+            _log.LogInformation("Master Sync Completed for {Org}", orgId);
+            _syncMonitor.AddLog("✅ Master Data Sync Cycle Finished (Deterministic).", "SUCCESS", "MASTERS");
         }
 
-        public async Task<MasterIntegrityResult> VerifyMasterDataIntegrityAsync(Guid organizationId)
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var dbContext = GetContext(scope.ServiceProvider);
-            var result = new MasterIntegrityResult { IsValid = true };
-            
-            result.GroupCount = await dbContext.AccountingGroups.CountAsync(g => g.OrganizationId == organizationId);
-            result.LedgerCount = await dbContext.Ledgers.CountAsync(l => l.OrganizationId == organizationId);
-            result.VoucherTypeCount = await dbContext.VoucherTypes.CountAsync(v => v.OrganizationId == organizationId);
-
-            if (result.GroupCount == 0)
-            {
-                result.IsValid = false;
-                result.ErrorMessage = "No accounting groups found. Tally export may have been empty or corrupted.";
-            }
-            else if (result.LedgerCount == 0)
-            {
-                result.IsValid = false;
-                result.ErrorMessage = "No ledgers found. Transactions cannot be synced without ledger context.";
-            }
-            else if (result.VoucherTypeCount == 0)
-            {
-                result.IsValid = false;
-                result.ErrorMessage = "No voucher types found. Tally transaction mapping will fail.";
-            }
-
-            return result;
-        }
-
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        // PHASE 1: ACCOUNTING GROUPS (enriched with NatureOfGroup)
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        private async Task SyncAccountingGroupsAsync(Guid orgId, AppDbContext dbContext)
-        {
-            _logger.LogInformation("Syncing Accounting Groups via XML...");
-            try
-            {
-                // Pass 1: SYNC GROUPS
-                _syncMonitor.SetStage("Accounting Groups", "Fetching accounting groups from Tally...", 10, false);
-                _logger.LogInformation("Syncing Accounting Groups via isolated XML...");
-
-                var groupResponse = await _xmlService.ExportCollectionXmlAsync("List of Groups", isCollection: true);
-                if (string.IsNullOrWhiteSpace(groupResponse))
-                {
-                    _syncMonitor.AddLog("âš  Tally returned empty XML for groups. Aborting Phase 1.", "WARNING", "MASTERS");
-                    throw new InvalidOperationException("Empty response from Tally during Group Sync.");
-                }
-
-                XDocument doc;
-                try
-                {
-                    var readerSettings = new System.Xml.XmlReaderSettings { CheckCharacters = false };
-                    using var sReader = new System.IO.StringReader(groupResponse);
-                    using var reader = System.Xml.XmlReader.Create(sReader, readerSettings);
-                    doc = XDocument.Load(reader);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to parse Tally Group XML.");
-                    throw new InvalidOperationException("Tally returned malformed XML for groups.");
-                }
-                
-                var nodes = doc.Descendants()
-                    .Where(x => x.Name.LocalName.Equals("GROUP", StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-                
-                if (nodes.Count == 0)
-                {
-                    _syncMonitor.AddLog("âŒ Critical: Tally returned 0 Accounting Groups. Check Company.", "ERROR", "MASTERS");
-                    throw new InvalidOperationException("No accounting groups found in Tally.");
-                }
-
-                _syncMonitor.AddLog($"Fetched {nodes.Count} Accounting Groups. Beginning import...", "INFO", "MASTERS");
-                _syncMonitor.SetStage("Processing Groups", $"Importing {nodes.Count} groups...", 15, false);
- 
-                // CRITICAL GUARD: Ensure we have valid names
-                if (!nodes.Any(n => !string.IsNullOrEmpty(GetTallyValue(n, "NAME"))))
-                {
-                   _syncMonitor.AddLog("âŒ Critical Fail: Tally returned 0 valid Accounting Groups name data. Aborting.", "ERROR", "MASTERS");
-                   throw new InvalidOperationException("Data Integrity Breach: Zero named accounting groups found in Tally schema.");
-                }
-
-                var existingGroups = await dbContext.AccountingGroups
-                    .Where(g => g.OrganizationId == orgId)
-                    .ToDictionaryAsync(g => g.TallyMasterId); // KEYED BY MASTERID
-
-                foreach (var g in existingGroups.Values) 
-                {
-                    g.IsPresentInTally = false; // Reset for reconciliation
-                }
-                
-                bool isMongo = string.Equals(SessionManager.Instance.SelectedDatabaseType, "MongoDB", StringComparison.OrdinalIgnoreCase);
-                var mongoDocs = new List<BsonDocument>();
-                int count = 0;
-
-                foreach (var node in nodes)
-                {
-                    string name = GetTallyValue(node, "NAME");
-                    if (string.IsNullOrWhiteSpace(name)) continue;
-
-                    string parent = GetTallyValue(node, "PARENT");
-                    string nature = GetTallyValue(node, "NATUREOFGROUP");
-                    bool isPrimary = string.Equals(GetTallyValue(node, "ISPRIMARY"), "Yes", StringComparison.OrdinalIgnoreCase);
-                    bool affectsGP = string.Equals(GetTallyValue(node, "AFFECTSGROSSPROFIT"), "Yes", StringComparison.OrdinalIgnoreCase);
-                    bool isAddable = string.Equals(GetTallyValue(node, "ISADDABLE"), "Yes", StringComparison.OrdinalIgnoreCase);
-
-                    long alterId = 0;
-                    long.TryParse(GetTallyValue(node, "ALTERID"), out alterId);
-
-                    string tallyId = GetTallyValue(node, "MASTERID");
-                    if (string.IsNullOrEmpty(tallyId)) tallyId = name; // Identity consistency fallback 
-                    if (existingGroups.TryGetValue(tallyId, out var existing))
-                    {
-                        existing.Name = name; // Update name in case of rename
-                        existing.Parent = parent;
-                        existing.NatureOfGroup = nature;
-                        existing.IsPrimary = isPrimary;
-                        existing.AffectsGrossProfit = affectsGP;
-                        existing.IsAddable = isAddable;
-                        existing.TallyMasterId = tallyId;
-                        existing.TallyAlterId = alterId; // Priority 2: Alteration tracking
-                        existing.UpdatedAt = DateTimeOffset.UtcNow;
-                        existing.IsPresentInTally = true; // Still in Tally source
-                        existing.IsActive = true; // Ensure it's active
-                    }
-                    else
-                    {
-                        var group = new AccountingGroup
-                        {
-                            Id = Guid.NewGuid(),
-                            OrganizationId = orgId,
-                            Name = name,
-                            Parent = parent,
-                            NatureOfGroup = nature,
-                            IsPrimary = isPrimary,
-                            AffectsGrossProfit = affectsGP,
-                            IsAddable = isAddable,
-                            TallyMasterId = tallyId,
-                            TallyAlterId = alterId,
-                            CreatedAt = DateTimeOffset.UtcNow,
-                            UpdatedAt = DateTimeOffset.UtcNow
-                        };
-                        await dbContext.AccountingGroups.AddAsync(group);
-                    }
-                    if (isMongo)
-                    {
-                        var mongoDoc = new BsonDocument
-                        {
-                            { "name", name }, { "parent", parent }, { "natureOfGroup", nature },
-                            { "isPrimary", isPrimary }, { "affectsGrossProfit", affectsGP },
-                            { "isAddable", isAddable }, { "TallyMasterId", tallyId }
-                        };
-                        mongoDocs.Add(mongoDoc);
-                    }
- 
-                    count++;
-                }
-
-                if (isMongo && mongoDocs.Any())
-                    await _mongoService.BulkUpsertDocumentsAsync("accountinggroups", mongoDocs, "TallyMasterId");
-
-                // After sync, anything still not present in Tally is deactivated
-                var deactivatedCount = 0;
-                foreach (var g in existingGroups.Values.Where(v => !v.IsPresentInTally && v.IsActive))
-                {
-                    g.IsActive = false; // Soft-Deactivate but keep data
-                    deactivatedCount++;
-                }
- 
-                await dbContext.SaveChangesAsync();
-                _logger.LogInformation($"Synced {count} Groups. {deactivatedCount} deactivated (removed from Tally).");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error syncing Accounting Groups");
-                _syncMonitor.AddLog($"âŒ Accounting Groups sync failed: {ex.Message}", "ERROR", "MASTERS");
-                throw;
-            }
-        }
-
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        // PHASE 2: LEDGERS (ODBC primary, XML fallback)
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        private async Task SyncLedgersAsync(Guid orgId, AppDbContext dbContext)
+        private async Task SyncPhase(string name, Guid orgId, Func<Task<int>> action, CancellationToken ct)
         {
             try
             {
-                // XML is now the primary method â€” more reliable across Tally versions
-                _logger.LogInformation("Syncing Ledgers via hardened XML (Primary)...");
-                await SyncLedgersFromXmlAsync(orgId, dbContext);
+                var control = _syncControl.GetState(orgId);
+                if (control.IsPaused)
+                {
+                    _syncMonitor.SetStage($"Paused {name}", "Sync is paused. Click Resume to continue.", _syncMonitor.ProgressPercent, false);
+                }
+                await control.PauseGate.WaitAsync(ct);
+                control.PauseGate.Release();
+
+                ct.ThrowIfCancellationRequested();
+                control.CurrentPhase = $"Master Sync: {name}";
+
+                _log.LogInformation("Phase Start: {Phase}", name);
+                _syncMonitor.SetStage($"Master Sync: {name}", $"Processing {name}...", 0, false);
+                
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                int count = await action();
+                sw.Stop();
+                
+                if (count > 0)
+                {
+                    _syncMonitor.TotalRecordsSynced += count;
+                    _syncMonitor.UpdateMetrics(_syncMonitor.TotalRecordsSynced, sw.Elapsed.TotalSeconds);
+                }
+
+                _log.LogInformation("Phase Complete: {Phase}", name);
+                _syncMonitor.AddLog($"✅ {name} phase complete. ({count} records)", "SUCCESS", "MASTERS");
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "XML Ledger sync failed. Attempting ODBC fallback...");
-                _syncMonitor.AddLog($"âš  XML sync issue ({ex.Message}). Trying ODBC fallback for Ledgers.", "WARNING", "MASTERS");
-                try
-                {
-                    await _odbcImporter.ImportLedgersAsync(orgId, CancellationToken.None);
-                }
-                catch (Exception odbcEx)
-                {
-                    _logger.LogError(odbcEx, "Both XML and ODBC Ledger sync failed.");
-                    _syncMonitor.AddLog("âŒ Critical: Could not sync Ledgers via any channel.", "ERROR", "MASTERS");
-                    throw;
-                }
- 
-                // CRITICAL INTEGRITY CHECK: Ensure we actually got some ledgers before finishing Phase 2
-                var checkCount = await dbContext.Ledgers.CountAsync(l => l.OrganizationId == orgId);
-                if (checkCount == 0)
-                {
-                    _syncMonitor.AddLog("âŒ Critical Fail: Both XML and ODBC returned 0 Ledgers. Aborting sync.", "ERROR", "MASTERS");
-                    throw new InvalidOperationException("Zero ledgers retrieved. Please verify Tally has a loaded company with accounts.");
-                }
+                _log.LogError(ex, "Phase Failed: {Phase}", name);
+                _syncMonitor.AddLog($"❌ {name} phase failed: {ex.Message}", "ERROR", "MASTERS");
+                throw; // FAIL FAST — do not continue
             }
         }
 
-        /// <summary>
-        /// Full XML-based ledger sync â€” used when ODBC is unavailable
-        /// </summary>
-        private async Task SyncLedgersFromXmlAsync(Guid orgId, AppDbContext dbContext)
+        // --- Phase 1: Accounting Groups ---
+        private async Task<int> SyncGroupsAsync(Guid orgId, bool force, CancellationToken ct)
         {
-            try
+            var data = await _xml.GetGroupsAsync();
+            var normalized = data
+                .Select(x => new {
+                    Name = x.Name.Trim(),
+                    Parent = x.Parent?.Trim(),
+                    TallyMasterId = x.TallyMasterId,
+                    TallyAlterId = x.TallyAlterId
+                })
+                .OrderBy(x => x.Parent)
+                .ThenBy(x => x.Name)
+                .ToList();
+
+            var hash = CalculateHash(normalized);
+            if (!force && await _meta.IsSameHashAsync(orgId, "Groups", hash))
             {
-                string? response = null;
-                int[] retryDelaysMs = { 30_000, 60_000 };
-                for (int i = 1; i <= 3; i++)
-                {
-                    if (TallyXmlService.IsCircuitOpen())
-                    {
-                        var remaining = TallyXmlService.CircuitCooldownRemaining();
-                        _syncMonitor.AddLog($"Circuit breaker is OPEN. Waiting {remaining}s before ledger fetch attempt {i}...", "WARNING", "MASTERS");
-                        await Task.Delay(remaining * 1000);
-                    }
-
-                    try
-                    {
-                        _syncMonitor.AddLog($"Fetching ledger headers from Tally (attempt {i}/3)...", "INFO", "MASTERS");
-                        response = await _xmlService.ExportCollectionXmlAsync("AccziteLedgerHeaders", isCollection: true);
-                        if (!string.IsNullOrWhiteSpace(response)) break;
-
-                        if (i < 3)
-                        {
-                            var waitSec = retryDelaysMs[i - 1] / 1000;
-                            _syncMonitor.AddLog($"Tally returned empty ledger response. Retrying in {waitSec}s...", "WARNING", "MASTERS");
-                            await Task.Delay(retryDelaysMs[i - 1]);
-                        }
-                    }
-                    catch (Exception ex) when (i < 3)
-                    {
-                        var waitSec = retryDelaysMs[i - 1] / 1000;
-                        _logger.LogWarning($"Ledger fetch attempt {i} failed: {ex.Message}. Retrying in {waitSec}s...");
-                        await Task.Delay(retryDelaysMs[i - 1]);
-                    }
-                }
-
-                if (string.IsNullOrWhiteSpace(response)) 
-                {
-                    throw new InvalidOperationException("Resilience Failure: Tally communication timed out or returned empty data for Ledgers.");
-                }
-
-                XDocument doc;
-                try
-                {
-                    var readerSettings = new System.Xml.XmlReaderSettings { CheckCharacters = false };
-                    using var sReader = new System.IO.StringReader(response);
-                    using var reader = System.Xml.XmlReader.Create(sReader, readerSettings);
-                    doc = XDocument.Load(reader);
-                }
-                catch (Exception ex)
-                {
-                    throw new InvalidOperationException("Tally returned malformed XML for ledgers.", ex);
-                }
-
-                var nodes = doc.Descendants()
-                    .Where(x => x.Name.LocalName.Equals("LEDGER", StringComparison.OrdinalIgnoreCase))
-                    .ToList(); // Headers only
-                if (nodes.Count == 0) return;
-
-                _syncMonitor.AddLog($"Fetched {nodes.Count} Ledger Headers. Syncing database...", "INFO", "MASTERS");
-                
-                var existingLedgers = await dbContext.Ledgers
-                    .Where(l => l.OrganizationId == orgId)
-                    .ToDictionaryAsync(l => l.TallyMasterId ?? l.Name);
- 
-                foreach (var l in existingLedgers.Values) l.IsPresentInTally = false;
-                
-                var validGroups = await dbContext.AccountingGroups
-                    .Where(g => g.OrganizationId == orgId && !g.IsDeleted)
-                    .Select(g => g.Name)
-                    .ToListAsync();
-                var groupNames = new HashSet<string>(validGroups, StringComparer.OrdinalIgnoreCase);
-                
-                dbContext.ChangeTracker.AutoDetectChangesEnabled = false;
-
-                var validMasterIds = new List<string>();
-                int count = 0;
-                var startTime = DateTime.Now;
-
-                foreach (var node in nodes)
-                {
-                    string name = node.Element("NAME")?.Value ?? node.Attribute("NAME")?.Value ?? string.Empty;
-                    if (string.IsNullOrWhiteSpace(name)) continue;
-
-                    var ledger = ParseLedgerFromXml(node, orgId);
-                    string tallyId = ledger.TallyMasterId ?? name;
-                    
-                    if (!string.IsNullOrEmpty(ledger.TallyMasterId))
-                    {
-                        validMasterIds.Add(ledger.TallyMasterId);
-                    }
- 
-                    if (existingLedgers.TryGetValue(tallyId, out var existing))
-                    {
-                        existing.Name = ledger.Name;
-                        existing.ParentGroup = ledger.ParentGroup;
-                        existing.UpdatedAt = DateTimeOffset.UtcNow;
-                        existing.IsPresentInTally = true;
-                        existing.IsActive = true;
-                        
-                        if (!string.IsNullOrEmpty(ledger.ParentGroup) && !groupNames.Contains(ledger.ParentGroup))
-                        {
-                             _syncMonitor.AddLog($"âŒ CRITICAL: Ledger '{ledger.Name}' points to missing Group '{ledger.ParentGroup}'.", "ERROR", "MASTERS");
-                             throw new InvalidOperationException($"Referential Integrity Breach: Ledger '{ledger.Name}' references a Group.");
-                        }
-
-                        if (Math.Abs(existing.OpeningBalance - ledger.OpeningBalance) > 0.01m)
-                        {
-                            existing.OpeningBalance = ledger.OpeningBalance;
-                        }
-                    }
-                    else
-                    {
-                        ledger.Id = Guid.NewGuid();
-                        ledger.CreatedAt = DateTimeOffset.UtcNow;
-                        ledger.UpdatedAt = DateTimeOffset.UtcNow;
-                        await dbContext.Ledgers.AddAsync(ledger);
-                        existingLedgers[tallyId] = ledger;
-                    }
-                    
-                    count++;
-                    if (count % 100 == 0) 
-                    {
-                        var elapsed = (DateTime.Now - startTime).TotalSeconds;
-                        _syncMonitor.TotalRecordsSynced = count;
-                        if (elapsed > 0) _syncMonitor.UpdateMetrics(count, elapsed);
-
-                        double progressOffset = 5.0;
-                        double progressScan = (double)count / nodes.Count * 20.0;
-                        _syncMonitor.ProgressPercent = progressOffset + progressScan;
-                        _syncMonitor.CurrentStageDetail = $"Importing: {count}/{nodes.Count} ledger headers...";
-                        
-                        if (count % 1000 == 0)
-                        {
-                            _syncMonitor.AddLog($"⚡ Progress: {count}/{nodes.Count} Ledger Headers parsed", "INFO", "MASTERS");
-                            await dbContext.SaveChangesAsync();
-                        }
-                    }
-                }
-                
-                await dbContext.SaveChangesAsync();
-
-                // PHASE 2: BATCH ENRICHMENT
-                int batchSize = _syncMonitor.SyncMode == "Safe" ? 25 : 50; 
-                int enrichDelayMs = _syncMonitor.SyncMode == "Safe" ? 3000 : 500;
-                _syncMonitor.AddLog($"Starting Ledger Enrichment in batches of {batchSize}...", "INFO", "MASTERS");
-
-                var batches = validMasterIds.Select((id, index) => new { id, index })
-                                            .GroupBy(x => x.index / batchSize)
-                                            .Select(g => g.Select(x => x.id).ToList())
-                                            .ToList();
-
-                int enrichedCount = 0;
-                for (int i = 0; i < batches.Count; i++)
-                {
-                    var batch = batches[i];
-                    string idList = string.Join(",", batch);
-
-                    var sw = System.Diagnostics.Stopwatch.StartNew();
-                    var detailXml = await _xmlService.ExportCollectionXmlAsync("AccziteLedgerDetails", isCollection: true, idList: idList);
-                    sw.Stop();
-
-                    if (sw.ElapsedMilliseconds > 8000)
-                    {
-                        _syncMonitor.TallyHealth = "Cooldown";
-                        _syncMonitor.AddLog($"Ledger enrichment ({sw.ElapsedMilliseconds}ms). Cooling down for 60s...", "WARNING", "MASTERS");
-                        await Task.Delay(60000);
-                    }
-                    else if (i < batches.Count - 1)
-                    {
-                        await Task.Delay(enrichDelayMs);
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(detailXml))
-                    {
-                        try
-                        {
-                            var dSettings = new System.Xml.XmlReaderSettings { CheckCharacters = false };
-                            using var sReader = new System.IO.StringReader(detailXml);
-                            using var dReader = System.Xml.XmlReader.Create(sReader, dSettings);
-                            var dDoc = XDocument.Load(dReader);
-                            
-                            var dNodes = dDoc.Descendants()
-                    .Where(x => x.Name.LocalName.Equals("LEDGER", StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-                            
-                            foreach (var dNode in dNodes)
-                            {
-                                var masterId = dNode.Element("MASTERID")?.Value ?? string.Empty;
-                                if (string.IsNullOrEmpty(masterId)) continue;
-                                
-                                if (existingLedgers.TryGetValue(masterId, out var existing))
-                                {
-                                    var detailLedger = ParseLedgerFromXml(dNode, orgId);
-                                    
-                                    existing.GSTApplicability = detailLedger.GSTApplicability;
-                                    existing.GSTRegistrationType = detailLedger.GSTRegistrationType;
-                                    existing.GSTIN = detailLedger.GSTIN;
-                                    existing.PAN = detailLedger.PAN;
-                                    existing.State = detailLedger.State;
-                                    existing.Email = detailLedger.Email;
-                                    existing.IsBillWise = detailLedger.IsBillWise;
-                                    existing.MailingName = detailLedger.MailingName;
-
-                                    if (Math.Abs(existing.ClosingBalance - detailLedger.ClosingBalance) > 0.01m)
-                                    {
-                                        existing.ClosingBalance = detailLedger.ClosingBalance;
-                                    }
-                                    
-                                    var addressNodes = dNode.Descendants("ADDRESS.LIST")
-                                        .SelectMany(x => x.Descendants("ADDRESS"))
-                                        .Select(x => x.Value);
-                                    existing.Address = string.Join(", ", addressNodes);
-
-                                    enrichedCount++;
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, $"Failed to parse enrichment batch {i+1}");
-                        }
-                    }
-
-                    if (i % 5 == 0) await dbContext.SaveChangesAsync();
-                    
-                    if (i % 2 == 0)
-                    {
-                        _syncMonitor.ProgressPercent = 5.0 + ((double)i / batches.Count * 20.0);
-                        _syncMonitor.AddLog($"Enriched {enrichedCount}/{validMasterIds.Count} Ledgers...", "INFO", "MASTERS");
-                    }
-                }
-
-                await dbContext.SaveChangesAsync();
-
-                var deactivatedLedgers = 0;
-                foreach (var l in existingLedgers.Values.Where(v => !v.IsPresentInTally && v.IsActive))
-                {
-                    l.IsActive = false; // Deactivate
-                    deactivatedLedgers++;
-                }
-                await dbContext.SaveChangesAsync();
-                
-                bool isMongo = string.Equals(SessionManager.Instance.SelectedDatabaseType, "MongoDB", StringComparison.OrdinalIgnoreCase);
-                if (isMongo)
-                {
-                    _syncMonitor.AddLog("Syncing Ledgers to MongoDB...", "INFO", "MASTERS");
-                    var allLedgers = existingLedgers.Values.ToList();
-                    for (int n = 0; n < allLedgers.Count; n += 500)
-                    {
-                        var chunk = allLedgers.Skip(n).Take(500).Select(BuildLedgerMongoBson).ToList();
-                        await _mongoService.BulkUpsertDocumentsAsync("ledgers", chunk, "TallyMasterId");
-                    }
-                }
-
-                _syncMonitor.AddLog($"Phase 2 Complete: Synced {nodes.Count} Ledgers ({enrichedCount} enriched, {deactivatedLedgers} removed).", "SUCCESS", "MASTERS");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error syncing Ledgers via XML");
-                _syncMonitor.AddLog($"âŒ XML Ledger sync failed: {ex.Message}", "ERROR", "MASTERS");
-                throw;
-            }
-            finally
-            {
-                dbContext.ChangeTracker.AutoDetectChangesEnabled = true; // Re-enable always
-            }
-        }
-
-        /// <summary>
-        /// Enrich ODBC-imported ledgers with GST/billing fields from XML
-        /// </summary>
-        private async Task EnrichLedgersFromXmlAsync(Guid orgId, AppDbContext dbContext)
-        {
-            try
-            {
-                var response = await _xmlService.ExportCollectionXmlAsync("List of Ledgers", isCollection: true);
-                if (string.IsNullOrWhiteSpace(response)) return;
-
-                var settings = new System.Xml.XmlReaderSettings { CheckCharacters = false };
-                using var stringReader = new System.IO.StringReader(response);
-                using var reader = System.Xml.XmlReader.Create(stringReader, settings);
-                var doc = XDocument.Load(reader);
-                var nodes = doc.Descendants()
-                    .Where(x => x.Name.LocalName.Equals("LEDGER", StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-                _syncMonitor.AddLog($"Enriching {nodes.Count} ledgers with GST details from XML 'List of Ledgers' collection.", "INFO", "MASTERS");
-
-                var existingLedgers = await dbContext.Ledgers
-                    .Where(l => l.OrganizationId == orgId)
-                    .ToDictionaryAsync(l => l.Name);
-
-                int enriched = 0;
-                foreach (var node in nodes)
-                {
-                    string name = node.Element("NAME")?.Value ?? string.Empty;
-                    if (string.IsNullOrWhiteSpace(name)) continue;
-                    if (!existingLedgers.TryGetValue(name, out var existing)) continue;
-
-                    var xmlLedger = ParseLedgerFromXml(node, orgId);
-                    
-                    // Only update GST/billing fields â€” balances already set by ODBC
-                    existing.GSTApplicability = xmlLedger.GSTApplicability;
-                    existing.GSTRegistrationType = xmlLedger.GSTRegistrationType;
-                    existing.GSTIN = xmlLedger.GSTIN;
-                    existing.IsBillWise = xmlLedger.IsBillWise;
-                    existing.Address = xmlLedger.Address;
-                    existing.State = xmlLedger.State;
-                    existing.PAN = xmlLedger.PAN;
-                    existing.Email = xmlLedger.Email;
-                    existing.MailingName = xmlLedger.MailingName;
-                    existing.UpdatedAt = DateTimeOffset.UtcNow;
-
-                    enriched++;
-                }
-
-                await dbContext.SaveChangesAsync();
-                _logger.LogInformation($"Enriched {enriched} ledgers with GST/billing data from XML.");
-                _syncMonitor.AddLog($"Enriched {enriched} ledgers with GST/billing fields.", "INFO", "MASTERS");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to enrich ledgers from XML â€” non-critical, continuing.");
-                _syncMonitor.AddLog($"âš  Ledger enrichment failed (non-critical): {ex.Message}", "WARNING", "MASTERS");
-            }
-        }
-
-        private Ledger ParseLedgerFromXml(XElement node, Guid orgId)
-        {
-            string name = GetTallyValue(node, "NAME");
-            string parent = GetTallyValue(node, "PARENT");
-
-            // Tally encodes balances as positive/negative text â€” parse carefully
-            // Standardizing: Debit = positive | Credit = negative (Normalized at ingestion)
-            decimal opening = 0, closing = 0;
-            decimal.TryParse(GetTallyValue(node, "OPENINGBALANCE").Replace(",", "").Trim(), out opening);
-            decimal.TryParse(GetTallyValue(node, "CLOSINGBALANCE").Replace(",", "").Trim(), out closing);
-            
-            // Build address from ADDRESS.LIST child nodes
-            string address = string.Empty;
-            var addrList = node.Element("ADDRESS.LIST") ?? node.Element("ADDRESS.LIST".ToUpper());
-            if (addrList != null)
-            {
-                var addrLines = addrList.Elements("ADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrEmpty(v));
-                address = string.Join(", ", addrLines);
+                _log.LogInformation("Groups unchanged, skipping.");
+                return 0;
             }
 
-            long alterId = 0;
-            long.TryParse(node.Element("ALTERID")?.Value, out alterId);
-
-            return new Ledger
+            var entities = normalized.Select(x => new AccountingGroup
             {
-                OrganizationId = orgId,
-                Name = name,
-                ParentGroup = parent,
-                OpeningBalance = opening,
-                ClosingBalance = closing,
-                TallyMasterId = node.Element("MASTERID")?.Value ?? name,
-                TallyAlterId = alterId,
-                GSTApplicability = node.Element("GSTAPPLICABILITY")?.Value ?? string.Empty,
-                GSTRegistrationType = node.Element("GSTREGISTRATIONTYPE")?.Value ?? string.Empty,
-                GSTIN = node.Element("PARTYGSTIN")?.Value ?? node.Element("GSTIN")?.Value ?? string.Empty,
-                IsBillWise = string.Equals(node.Element("ISBILLWISEON")?.Value, "Yes", StringComparison.OrdinalIgnoreCase),
-                Address = address,
-                State = node.Element("LEDSTATENAME")?.Value ?? string.Empty,
-                PAN = node.Element("INCOMETAXNUMBER")?.Value ?? string.Empty,
-                Email = node.Element("EMAIL")?.Value ?? string.Empty,
-                MailingName = node.Element("MAILINGNAME")?.Value ?? string.Empty
-            };
-        }
-
-        private void ApplyLedgerFields(Ledger target, Ledger source)
-        {
-            target.Name = source.Name; // Identity Lock: handle renames by MASTERID
-            target.ParentGroup = source.ParentGroup;
-            target.OpeningBalance = source.OpeningBalance;
-            target.ClosingBalance = source.ClosingBalance;
-            target.GSTApplicability = source.GSTApplicability;
-            target.GSTRegistrationType = source.GSTRegistrationType;
-            target.GSTIN = source.GSTIN;
-            target.IsBillWise = source.IsBillWise;
-            target.Address = source.Address;
-            target.State = source.State;
-            target.PAN = source.PAN;
-            target.Email = source.Email;
-            target.MailingName = source.MailingName;
-            target.TallyMasterId = source.TallyMasterId;
-            target.TallyAlterId = source.TallyAlterId; // Priority 2: Alteration tracking
-        }
-
-        private BsonDocument BuildLedgerMongoBson(Ledger l)
-        {
-            return new BsonDocument
-            {
-                { "name", l.Name }, { "parentGroup", l.ParentGroup },
-                { "openingBalance", (double)l.OpeningBalance }, { "closingBalance", (double)l.ClosingBalance },
-                { "gstApplicability", l.GSTApplicability }, { "gstRegistrationType", l.GSTRegistrationType },
-                { "gstin", l.GSTIN }, { "isBillWise", l.IsBillWise },
-                { "address", l.Address }, { "state", l.State },
-                { "pan", l.PAN }, { "email", l.Email },
-                { "mailingName", l.MailingName }, { "TallyMasterId", l.TallyMasterId }
-            };
-        }
-
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        // PHASE 5: STOCK GROUPS + STOCK CATEGORIES (via XML)
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        private async Task SyncStockGroupsAsync(Guid orgId, AppDbContext dbContext)
-        {
-            await SyncXmlCollectionAsync<StockGroup>(orgId, "List of Stock Groups", "STOCKGROUP", element => new StockGroup
-            {
-                OrganizationId = orgId,
-                Name = element.Element("NAME")?.Value ?? string.Empty,
-                Parent = element.Element("PARENT")?.Value ?? string.Empty
+                Name = x.Name,
+                Parent = x.Parent,
+                TallyMasterId = x.TallyMasterId
             });
+
+            await _repo.UpsertGroupsAsync(orgId, entities, ct);
+            await _meta.SaveHashAsync(orgId, "Groups", hash);
+            return normalized.Count;
         }
 
-        private async Task SyncStockCategoriesAsync(Guid orgId, AppDbContext dbContext)
+        // --- Phase 2: Ledgers ---
+        private async Task<int> SyncLedgersAsync(Guid orgId, bool force, CancellationToken ct)
         {
-            await SyncXmlCollectionAsync<StockCategory>(orgId, "List of Stock Categories", "STOCKCATEGORY", element => new StockCategory
-            {
-                OrganizationId = orgId,
-                Name = element.Element("NAME")?.Value ?? string.Empty,
-                Parent = element.Element("PARENT")?.Value ?? string.Empty
-            });
+            var data = await _xml.GetLedgersAsync();
+            var normalized = data
+                .Select(x => new {
+                    Name = x.Name.Trim(),
+                    Parent = x.Parent?.Trim(),
+                    TallyMasterId = x.TallyMasterId,
+                    TallyAlterId = x.TallyAlterId
+                })
+                .OrderBy(x => x.Parent)
+                .ThenBy(x => x.Name)
+                .ToList();
+
+            var hash = CalculateHash(normalized);
+            if (!force && await _meta.IsSameHashAsync(orgId, "Ledgers", hash)) return 0;
+
+            // VALIDATE dependencies BEFORE insert
+            var validGroups = await _repo.GetAccountingGroupNamesAsync(orgId);
+            var validEntities = normalized
+                .Where(x => string.IsNullOrEmpty(x.Parent) || validGroups.Contains(x.Parent))
+                .Select(x => new Ledger { Name = x.Name, ParentGroup = x.Parent, TallyMasterId = x.TallyMasterId })
+                .ToList();
+
+            await _repo.UpsertLedgersAsync(orgId, validEntities, ct);
+            await _meta.SaveHashAsync(orgId, "Ledgers", hash);
+            return normalized.Count;
         }
 
-        private async Task SyncStockItemsAsync(Guid orgId, AppDbContext dbContext)
+        // --- Phase 4: Voucher Types ---
+        private async Task<int> SyncVoucherTypesAsync(Guid orgId, bool force, CancellationToken ct)
         {
-            try
-            {
-                await _odbcImporter.ImportStockItemsAsync(orgId, CancellationToken.None);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "ODBC Stock import failed. Falling back to XML...");
-                _syncMonitor.AddLog($"âš  ODBC StockItems failed. Falling back to XML.", "WARNING", "MASTERS");
-                await SyncXmlCollectionAsync<StockItem>(orgId, "List of Stock Items", "STOCKITEM", element => new StockItem
-                {
-                    OrganizationId = orgId,
-                    Name = element.Element("NAME")?.Value ?? string.Empty,
-                    StockGroup = element.Element("PARENT")?.Value ?? string.Empty,
-                    BaseUnit = element.Element("BASEUNITS")?.Value ?? string.Empty,
-                    TallyMasterId = element.Element("NAME")?.Value ?? string.Empty,
-                    OpeningBalance = decimal.TryParse(element.Element("OPENINGBALANCE")?.Value, out var ob) ? ob : 0,
-                    ClosingBalance = decimal.TryParse(element.Element("CLOSINGBALANCE")?.Value, out var cb) ? cb : 0
-                });
-            }
+            var data = await _xml.GetVoucherTypesAsync();
+            var normalized = data
+                .Select(x => new { Name = x.Name.Trim(), Category = x.Parent?.Trim(), TallyMasterId = x.TallyMasterId, TallyAlterId = x.TallyAlterId })
+                .OrderBy(x => x.Name)
+                .ToList();
+
+            var hash = CalculateHash(normalized);
+            if (!force && await _meta.IsSameHashAsync(orgId, "VoucherTypes", hash)) return 0;
+
+            var entities = normalized.Select(x => new VoucherType { Name = x.Name, Category = x.Category ?? string.Empty, TallyMasterId = x.TallyMasterId });
+            await _repo.UpsertVoucherTypesAsync(orgId, entities, ct);
+            await _meta.SaveHashAsync(orgId, "VoucherTypes", hash);
+            return normalized.Count;
         }
 
-        // Dimension table population
-        private async Task PopulateDimGroupsAsync(Guid orgId)
+        // --- Phase 5: Units & Godowns ---
+        private async Task<int> SyncUnitsAsync(Guid orgId, bool force, CancellationToken ct)
         {
-            var dbContext = RequireContext();
-            var groups = await dbContext.AccountingGroups
-                .Where(g => g.OrganizationId == orgId)
-                .ToListAsync();
-            var existingDimGroups = await dbContext.DimGroups
-                .Where(d => d.OrganizationId == orgId)
-                .ToListAsync();
-            var existingMap = existingDimGroups.ToDictionary(d => d.GroupName, StringComparer.OrdinalIgnoreCase);
-            var groupsByName = groups
-                .GroupBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+            var data = await _xml.GetUnitsAsync();
+            var normalized = data.Select(x => new { Name = x.Name.Trim(), TallyMasterId = x.TallyMasterId, TallyAlterId = x.TallyAlterId }).OrderBy(x => x.Name).ToList();
+            var hash = CalculateHash(normalized);
+            if (!force && await _meta.IsSameHashAsync(orgId, "Units", hash)) return 0;
 
-            foreach (var group in groups)
-            {
-                groupsByName.TryGetValue(group.Parent, out var parentGroup);
-                var parentGroupId = parentGroup?.Id;
-                var rootGroup = ResolveRootGroup(group.Name, group.Parent, groups);
-
-                if (existingMap.TryGetValue(group.Name, out var existingDimGroup))
-                {
-                    existingDimGroup.ParentGroupId = parentGroupId;
-                    existingDimGroup.RootGroup = rootGroup;
-                    existingDimGroup.TallyMasterId = group.TallyMasterId;
-                    existingDimGroup.UpdatedAt = DateTimeOffset.UtcNow;
-                    continue;
-                }
-
-                await dbContext.DimGroups.AddAsync(new Acczite20.Models.Warehouse.DimGroup
-                {
-                    Id = group.Id,
-                    OrganizationId = orgId,
-                    GroupName = group.Name,
-                    ParentGroupId = parentGroupId,
-                    RootGroup = rootGroup,
-                    TallyMasterId = group.TallyMasterId,
-                    CreatedAt = DateTimeOffset.UtcNow,
-                    UpdatedAt = DateTimeOffset.UtcNow
-                });
-            }
-
-            await dbContext.SaveChangesAsync();
+            var entities = normalized.Select(x => new Unit { Name = x.Name, TallyMasterId = x.TallyMasterId });
+            await _repo.UpsertUnitsAsync(orgId, entities, ct);
+            await _meta.SaveHashAsync(orgId, "Units", hash);
+            return normalized.Count;
         }
 
-        private async Task PopulateDimLedgersAsync(Guid orgId)
+        private async Task<int> SyncGodownsAsync(Guid orgId, bool force, CancellationToken ct)
         {
-            var dbContext = RequireContext();
-            var ledgers = await dbContext.Ledgers
-                .Where(l => l.OrganizationId == orgId)
-                .ToListAsync();
-            var dimGroups = await dbContext.DimGroups
-                .Where(d => d.OrganizationId == orgId)
-                .ToListAsync();
-            var dimGroupMap = dimGroups.ToDictionary(d => d.GroupName, StringComparer.OrdinalIgnoreCase);
-            var existingDimLedgers = await dbContext.DimLedgers
-                .Where(d => d.OrganizationId == orgId)
-                .ToDictionaryAsync(d => d.Id);
+            var data = await _xml.GetGodownsAsync();
+            var normalized = data.Select(x => new { Name = x.Name.Trim(), Parent = x.Parent?.Trim(), TallyMasterId = x.TallyMasterId, TallyAlterId = x.TallyAlterId }).OrderBy(x => x.Parent).ThenBy(x => x.Name).ToList();
+            var hash = CalculateHash(normalized);
+            if (!force && await _meta.IsSameHashAsync(orgId, "Godowns", hash)) return 0;
 
-            foreach (var ledger in ledgers)
-            {
-                var hasGroup = dimGroupMap.TryGetValue(ledger.ParentGroup, out var dimGroup);
-                var groupId = hasGroup ? dimGroup!.Id : Guid.Empty;
-                var isGstLedger = !string.IsNullOrEmpty(ledger.GSTApplicability)
-                    && !string.Equals(ledger.GSTApplicability, "Not Applicable", StringComparison.OrdinalIgnoreCase);
-
-                if (existingDimLedgers.TryGetValue(ledger.Id, out var existingDimLedger))
-                {
-                    existingDimLedger.LedgerName = ledger.Name;
-                    existingDimLedger.GroupId = groupId;
-                    existingDimLedger.ParentGroupName = ledger.ParentGroup;
-                    existingDimLedger.IsBillWise = ledger.IsBillWise;
-                    existingDimLedger.IsGstLedger = isGstLedger;
-                    existingDimLedger.TallyMasterId = ledger.TallyMasterId;
-                    existingDimLedger.UpdatedAt = DateTimeOffset.UtcNow;
-                    continue;
-                }
-
-                await dbContext.DimLedgers.AddAsync(new Acczite20.Models.Warehouse.DimLedger
-                {
-                    Id = ledger.Id,
-                    OrganizationId = orgId,
-                    LedgerName = ledger.Name,
-                    GroupId = groupId,
-                    ParentGroupName = ledger.ParentGroup,
-                    IsBillWise = ledger.IsBillWise,
-                    IsGstLedger = isGstLedger,
-                    TallyMasterId = ledger.TallyMasterId,
-                    CreatedAt = DateTimeOffset.UtcNow,
-                    UpdatedAt = DateTimeOffset.UtcNow
-                });
-            }
-
-            await dbContext.SaveChangesAsync();
+            var entities = normalized.Select(x => new Godown { Name = x.Name, Parent = x.Parent ?? string.Empty, TallyMasterId = x.TallyMasterId });
+            await _repo.UpsertGodownsAsync(orgId, entities, ct);
+            await _meta.SaveHashAsync(orgId, "Godowns", hash);
+            return normalized.Count;
         }
 
-        private Task PopulateDimStockItemsAsync(Guid orgId) => PopulateDimStockItemsAsync(orgId, RequireContext());
-
-        private async Task PopulateDimStockItemsAsync(Guid orgId, AppDbContext dbContext)
+        // --- Phase 6: Stock Groups & Items ---
+        private async Task<int> SyncStockGroupsAsync(Guid orgId, bool force, CancellationToken ct)
         {
-            var items = await dbContext.StockItems.Where(i => i.OrganizationId == orgId).ToListAsync();
-            foreach (var i in items)
-            {
-                if (!await dbContext.DimStockItems.AnyAsync(d => d.Id == i.Id))
-                {
-                    await dbContext.DimStockItems.AddAsync(new Acczite20.Models.Warehouse.DimStockItem
-                    {
-                        Id = i.Id, OrganizationId = orgId, StockItemName = i.Name,
-                        TallyMasterId = i.TallyMasterId,
-                        CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
-                    });
-                }
-            }
-            await dbContext.SaveChangesAsync();
+            var data = await _xml.GetStockGroupsAsync();
+            var normalized = data.Select(x => new { Name = x.Name.Trim(), Parent = x.Parent?.Trim(), TallyMasterId = x.TallyMasterId, TallyAlterId = x.TallyAlterId }).OrderBy(x => x.Parent).ThenBy(x => x.Name).ToList();
+            var hash = CalculateHash(normalized);
+            if (!force && await _meta.IsSameHashAsync(orgId, "StockGroups", hash)) return 0;
+
+            var entities = normalized.Select(x => new StockGroup { Name = x.Name, Parent = x.Parent ?? string.Empty, TallyMasterId = x.TallyMasterId });
+            await _repo.UpsertStockGroupsAsync(orgId, entities, ct);
+            await _meta.SaveHashAsync(orgId, "StockGroups", hash);
+            return normalized.Count;
         }
 
-        private Task PopulateDimVoucherTypesAsync(Guid orgId) => PopulateDimVoucherTypesAsync(orgId, RequireContext());
-
-        private async Task PopulateDimVoucherTypesAsync(Guid orgId, AppDbContext dbContext)
+        private async Task<int> SyncStockItemsAsync(Guid orgId, bool force, CancellationToken ct)
         {
-            var types = await dbContext.VoucherTypes.Where(v => v.OrganizationId == orgId).ToListAsync();
-            foreach (var v in types)
-            {
-                if (!await dbContext.DimVoucherTypes.AnyAsync(d => d.Id == v.Id))
-                {
-                    await dbContext.DimVoucherTypes.AddAsync(new Acczite20.Models.Warehouse.DimVoucherType
-                    {
-                        Id = v.Id, OrganizationId = orgId, VoucherTypeName = v.Name,
-                        TallyMasterId = v.Name,
-                        CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
-                    });
-                }
-            }
-            await dbContext.SaveChangesAsync();
+            var data = await _xml.GetStockItemsAsync();
+            var normalized = data.Select(x => new { Name = x.Name.Trim(), Group = x.Parent?.Trim(), TallyMasterId = x.TallyMasterId, TallyAlterId = x.TallyAlterId }).OrderBy(x => x.Group).ThenBy(x => x.Name).ToList();
+            var hash = CalculateHash(normalized);
+            if (!force && await _meta.IsSameHashAsync(orgId, "StockItems", hash)) return 0;
+
+            var validGroups = await _repo.GetStockGroupNamesAsync(orgId);
+            var validEntities = normalized
+                .Where(x => string.IsNullOrEmpty(x.Group) || validGroups.Contains(x.Group))
+                .Select(x => new StockItem { Name = x.Name, StockGroup = x.Group, TallyMasterId = x.TallyMasterId })
+                .ToList();
+
+            await _repo.UpsertStockItemsAsync(orgId, validEntities, ct);
+            await _meta.SaveHashAsync(orgId, "StockItems", hash);
+            return validEntities.Count;
         }
 
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        // AUTO-MAP: Complete coverage of all 15 Tally primary groups
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        private Task AutoMapLedgersAsync(Guid orgId) => AutoMapLedgersAsync(orgId, RequireContext());
-
-        private async Task AutoMapLedgersAsync(Guid orgId, AppDbContext dbContext)
+        // --- Phase 7: Cost Categories & Centres ---
+        private async Task<int> SyncCostCategoriesAsync(Guid orgId, bool force, CancellationToken ct)
         {
-            _logger.LogInformation("Auto-mapping ledgers to categories (complete coverage)...");
-            
-            var dimGroups = await dbContext.DimGroups.Where(d => d.OrganizationId == orgId).ToListAsync();
-            var existingMappings = await dbContext.LedgerMappings.Where(m => m.OrganizationId == orgId).ToListAsync();
-            var ledgerList = await dbContext.Ledgers.Where(l => l.OrganizationId == orgId).ToListAsync();
+            var data = await _xml.GetCostCategoriesAsync();
+            var normalized = data.Select(x => new { Name = x.Name.Trim(), TallyMasterId = x.TallyMasterId, TallyAlterId = x.TallyAlterId }).OrderBy(x => x.Name).ToList();
+            var hash = CalculateHash(normalized);
+            if (!force && await _meta.IsSameHashAsync(orgId, "CostCategories", hash)) return 0;
 
-            foreach (var ledger in ledgerList)
-            {
-                var group = dimGroups.FirstOrDefault(g => g.GroupName == ledger.ParentGroup);
-                if (group == null) continue;
-
-                // Complete mapping of ALL Tally primary root groups
-                string? category = group.RootGroup switch
-                {
-                    // Revenue
-                    "Sales Accounts" => "Sales",
-                    "Direct Incomes" => "Income",
-                    "Indirect Incomes" => "Income",
-                    
-                    // Expenses
-                    "Direct Expenses" => "Expense",
-                    "Indirect Expenses" => "Expense",
-                    "Purchase Accounts" => "Purchase",
-                    
-                    // Assets
-                    "Sundry Debtors" => "Receivables",
-                    "Bank Accounts" => "Cash",
-                    "Cash-in-hand" => "Cash",
-                    "Current Assets" => "Current Assets",
-                    "Fixed Assets" => "Fixed Assets",
-                    "Investments" => "Investments",
-                    "Stock-in-hand" => "Inventory",
-                    "Deposits (Asset)" => "Deposits",
-                    "Loans & Advances (Asset)" => "Loans (Asset)",
-                    "Misc. Expenses (ASSET)" => "Misc Expenses",
-                    
-                    // Liabilities
-                    "Sundry Creditors" => "Payables",
-                    "Current Liabilities" => "Current Liabs",
-                    "Loans (Liability)" => "Loans (Liability)",
-                    "Secured Loans" => "Secured Loans",
-                    "Unsecured Loans" => "Unsecured Loans",
-                    "Bank OD Accounts" => "Bank OD",
-                    "Duties & Taxes" => "Taxes",
-                    "Provisions" => "Provisions",
-                    
-                    // Capital
-                    "Capital Account" => "Capital",
-                    "Reserves & Surplus" => "Reserves",
-                    "Suspense A/c" => "Suspense",
-                    "Branch / Divisions" => "Branches",
-                    
-                    _ => null
-                };
-
-                if (category != null)
-                {
-                    var mapping = existingMappings.FirstOrDefault(m => m.LedgerId == ledger.Id);
-                    if (mapping == null)
-                    {
-                        mapping = new Acczite20.Models.Warehouse.LedgerMapping
-                        {
-                            Id = Guid.NewGuid(),
-                            OrganizationId = orgId,
-                            LedgerId = ledger.Id,
-                            MappedCategory = category,
-                            TallyLedgerName = ledger.Name,
-                            CreatedAt = DateTimeOffset.UtcNow
-                        };
-                        await dbContext.LedgerMappings.AddAsync(mapping);
-                        existingMappings.Add(mapping);
-                    }
-                    else if (mapping.MappedCategory != category)
-                    {
-                        mapping.MappedCategory = category;
-                        mapping.UpdatedAt = DateTimeOffset.UtcNow;
-                    }
-                }
-            }
-            await dbContext.SaveChangesAsync();
-            _syncMonitor.AddLog($"Auto-mapped {existingMappings.Count} ledgers to analytics categories.", "INFO", "MASTERS");
+            var entities = normalized.Select(x => new CostCategory { Name = x.Name, TallyMasterId = x.TallyMasterId });
+            await _repo.UpsertCostCategoriesAsync(orgId, entities, ct);
+            await _meta.SaveHashAsync(orgId, "CostCategories", hash);
+            return normalized.Count;
         }
 
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        // INTEGRITY VALIDATION â€” catch data quality issues
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        private Task ValidateIntegrityAsync(Guid orgId) => ValidateIntegrityAsync(orgId, RequireContext());
-
-        private async Task ValidateIntegrityAsync(Guid orgId, AppDbContext dbContext)
+        private async Task<int> SyncCostCentresAsync(Guid orgId, bool force, CancellationToken ct)
         {
-            int issues = 0;
+            var data = await _xml.GetCostCentresAsync();
+            var normalized = data.Select(x => new { Name = x.Name.Trim(), Category = x.Parent?.Trim(), TallyMasterId = x.TallyMasterId, TallyAlterId = x.TallyAlterId }).OrderBy(x => x.Category).ThenBy(x => x.Name).ToList();
+            var hash = CalculateHash(normalized);
+            if (!force && await _meta.IsSameHashAsync(orgId, "CostCentres", hash)) return 0;
 
-            // 1. Orphan Ledgers â€” Parent group doesn't exist
-            var allGroups = await dbContext.AccountingGroups.Where(g => g.OrganizationId == orgId).Select(g => g.Name).ToListAsync();
-            var groupSet = new HashSet<string>(allGroups, StringComparer.OrdinalIgnoreCase);
-
-            var ledgersWithBadParent = await dbContext.Ledgers
-                .Where(l => l.OrganizationId == orgId && !string.IsNullOrEmpty(l.ParentGroup))
-                .ToListAsync();
-
-            foreach (var l in ledgersWithBadParent)
-            {
-                if (!groupSet.Contains(l.ParentGroup))
-                {
-                    _syncMonitor.AddLog($"âš  Orphan Ledger: '{l.Name}' â†’ parent group '{l.ParentGroup}' not found.", "WARNING", "INTEGRITY");
-                    issues++;
-                }
-            }
-
-            // 2. Groups with unresolvable parents
-            var allGroupEntities = await dbContext.AccountingGroups.Where(g => g.OrganizationId == orgId).ToListAsync();
-            foreach (var g in allGroupEntities)
-            {
-                if (!string.IsNullOrEmpty(g.Parent) && !groupSet.Contains(g.Parent))
-                {
-                    _syncMonitor.AddLog($"âš  Orphan Group: '{g.Name}' â†’ parent '{g.Parent}' not found.", "WARNING", "INTEGRITY");
-                    issues++;
-                }
-            }
-
-            // 3. Duplicate ledger names (same org)
-            var dupes = await dbContext.Ledgers
-                .Where(l => l.OrganizationId == orgId)
-                .GroupBy(l => l.Name)
-                .Where(g => g.Count() > 1)
-                .Select(g => new { Name = g.Key, Count = g.Count() })
-                .ToListAsync();
-
-            foreach (var d in dupes)
-            {
-                _syncMonitor.AddLog($"âš  Duplicate Ledger: '{d.Name}' appears {d.Count} times.", "WARNING", "INTEGRITY");
-                issues++;
-            }
-
-            // 4. DimLedgers with Guid.Empty GroupId
-            var emptyGroupDims = await dbContext.DimLedgers
-                .Where(d => d.OrganizationId == orgId && d.GroupId == Guid.Empty)
-                .CountAsync();
-
-            if (emptyGroupDims > 0)
-            {
-                _syncMonitor.AddLog($"âš  {emptyGroupDims} DimLedgers have unresolved GroupId (Guid.Empty).", "WARNING", "INTEGRITY");
-                issues++;
-            }
-
-            // Summary
-            if (issues == 0)
-                _syncMonitor.AddLog("âœ… Integrity check passed â€” no issues found.", "SUCCESS", "INTEGRITY");
-            else
-                _syncMonitor.AddLog($"âš  Integrity check found {issues} issue(s). Review warnings above.", "WARNING", "INTEGRITY");
+            var entities = normalized.Select(x => new CostCentre { Name = x.Name, CategoryName = x.Category, TallyMasterId = x.TallyMasterId });
+            await _repo.UpsertCostCentresAsync(orgId, entities, ct);
+            await _meta.SaveHashAsync(orgId, "CostCentres", hash);
+            return normalized.Count;
         }
 
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        // UTILITY METHODS
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-
-
-        private string ResolveRootGroup(string name, string parent, List<AccountingGroup> allGroups)
+        private string CalculateHash(IEnumerable<dynamic> data)
         {
-            string currentName = name;
-            string currentParent = parent;
-            
-            int safety = 0;
-            while (safety++ < 20)
-            {
-                if (string.IsNullOrEmpty(currentParent)) return currentName;
-                
-                var pNode = allGroups.FirstOrDefault(g => g.Name == currentParent);
-                if (pNode == null) return currentName;
-                
-                currentName = pNode.Name;
-                currentParent = pNode.Parent;
-            }
-            return currentName;
-        }
-
-        private Task SyncXmlCollectionAsync<TEntity>(Guid organizationId, string reportName, string xmlNodeName, bool isCollection, Func<XElement, TEntity> mappingFunction)
-            where TEntity : BaseEntity =>
-            SyncXmlCollectionAsync(organizationId, reportName, xmlNodeName, isCollection, RequireContext(), mappingFunction);
-
-        private Task SyncXmlCollectionAsync<TEntity>(Guid organizationId, string reportName, string xmlNodeName, Func<XElement, TEntity> mappingFunction)
-            where TEntity : BaseEntity =>
-            SyncXmlCollectionAsync(organizationId, reportName, xmlNodeName, true, RequireContext(), mappingFunction);
-
-        private async Task SyncXmlCollectionAsync<TEntity>(Guid organizationId, string reportName, string xmlNodeName, bool isCollection, AppDbContext dbContext, Func<XElement, TEntity> mappingFunction) where TEntity : BaseEntity
-        {
-            _logger.LogInformation($"Syncing {reportName} via XML (isCollection: {isCollection})...");
-            
-            try
-            {
-                var response = await _xmlService.ExportCollectionXmlAsync(reportName, isCollection: isCollection);
-                if (string.IsNullOrWhiteSpace(response)) return;
- 
-                var settings = new System.Xml.XmlReaderSettings { CheckCharacters = false };
-                using var stringReader = new System.IO.StringReader(response);
-                using var reader = System.Xml.XmlReader.Create(stringReader, settings);
-                var doc = XDocument.Load(reader);
-                
-                var nodes = doc.Descendants()
-                    .Where(x => x.Name.LocalName.Equals(xmlNodeName, StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-                
-                var entities = new List<TEntity>();
-                foreach (var node in nodes)
-                {
-                    var entity = mappingFunction(node);
-                    if (entity != null) entities.Add(entity);
-                }
-
-                if (entities.Any())
-                {
-                    var dbType = SessionManager.Instance.SelectedDatabaseType;
-                    bool isMongo = string.Equals(dbType, "MongoDB", StringComparison.OrdinalIgnoreCase);
-                    var mongoDocs = new List<BsonDocument>();
-
-                    var dbSet = dbContext.Set<TEntity>();
-                    var existingEntities = await dbSet.Where(e => e.OrganizationId == organizationId).ToListAsync();
-                    
-                    var nameProp = typeof(TEntity).GetProperty("Name");
-                    var existingMap = existingEntities
-                        .Where(e => nameProp?.GetValue(e) != null)
-                        .ToDictionary(e => nameProp!.GetValue(e)!.ToString()!, e => e);
-
-                    foreach (var entity in entities)
-                    {
-                        if (nameProp == null) continue;
-                        var nameValue = nameProp.GetValue(entity)?.ToString();
-                        if (string.IsNullOrEmpty(nameValue)) continue;
-
-                        if (existingMap.TryGetValue(nameValue, out var existing))
-                        {
-                            bool isModified = false;
-                            foreach (var prop in typeof(TEntity).GetProperties())
-                            {
-                                if (prop.Name != "Id" && prop.Name != "OrganizationId" && prop.Name != "CreatedAt" && prop.CanWrite)
-                                {
-                                    var newValue = prop.GetValue(entity);
-                                    var oldValue = prop.GetValue(existing);
-                                    if (!Equals(newValue, oldValue))
-                                    {
-                                        prop.SetValue(existing, newValue);
-                                        isModified = true;
-                                    }
-                                }
-                            }
-
-                            if (isModified)
-                            {
-                                existing.UpdatedAt = DateTimeOffset.UtcNow;
-                                dbContext.Entry(existing).State = EntityState.Modified;
-                            }
-                        }
-                        else
-                        {
-                            entity.Id = Guid.NewGuid();
-                            entity.CreatedAt = DateTimeOffset.UtcNow;
-                            entity.UpdatedAt = DateTimeOffset.UtcNow;
-                            await dbSet.AddAsync(entity);
-                        }
-
-                        if (isMongo)
-                        {
-                            var mongoDoc = new BsonDocument { { "name", nameValue }, { "TallyMasterId", nameValue } };
-                            foreach (var prop in typeof(TEntity).GetProperties())
-                            {
-                                if (prop.Name != "Id" && prop.Name != "OrganizationId" && prop.CanRead)
-                                {
-                                    var val = prop.GetValue(entity);
-                                    if (val != null) mongoDoc[prop.Name.ToLower()] = val.ToString();
-                                }
-                            }
-                            mongoDocs.Add(mongoDoc);
-                        }
-                    }
-
-                    if (isMongo && mongoDocs.Any())
-                    {
-                        string collectionName = typeof(TEntity).Name.ToLower() + "s";
-                        if (typeof(TEntity) == typeof(AccountingGroup)) collectionName = "accountinggroups";
-                        
-                        await _mongoService.BulkUpsertDocumentsAsync(collectionName, mongoDocs, "TallyMasterId");
-                    }
-
-                    await dbContext.SaveChangesAsync();
-                    _logger.LogInformation($"Successfully synced {entities.Count} {reportName}");
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Error syncing {reportName}: {ex.Message}");
-                _syncMonitor.AddLog($"âŒ {reportName} sync failed: {ex.Message}", "ERROR", "MASTERS");
-            }
-        }
-        private static string GetValue(XElement el, string name)
-        {
-            return el.Attribute(name)?.Value
-                ?? el.Element(name)?.Value
-                ?? string.Empty;
-        }
-
-        private static string GetTallyValue(XElement element, string name) => GetValue(element, name);
-
-        // ══════════════════════════════════════════════════════════════
-        // PHASE 8: BALANCE SHEET GROUPS (Assets + Liabilities closing balances)
-        // ══════════════════════════════════════════════════════════════
-        private async Task SyncBalanceSheetGroupsAsync(Guid orgId, AppDbContext dbContext)
-        {
-            try
-            {
-                var response = await _xmlService.ExportCollectionXmlAsync("AccziteBalanceSheetGroups", isCollection: true);
-                if (string.IsNullOrWhiteSpace(response))
-                {
-                    _syncMonitor.AddLog("⚠ Balance Sheet: empty response from Tally.", "WARNING", "MASTERS");
-                    return;
-                }
-                var doc = XDocument.Parse(response);
-                var nodes = doc.Descendants()
-                    .Where(x => x.Name.LocalName.Equals("GROUP", StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-
-                var existingGroups = await dbContext.AccountingGroups
-                    .Where(g => g.OrganizationId == orgId)
-                    .ToDictionaryAsync(g => g.Name, StringComparer.OrdinalIgnoreCase);
-
-                int updated = 0;
-                foreach (var node in nodes)
-                {
-                    var name = GetValue(node, "NAME");
-                    decimal.TryParse(GetValue(node, "CLOSINGBALANCE").Replace(",", "").Trim(), out var closing);
-                    if (existingGroups.TryGetValue(name, out var group))
-                    {
-                        group.ClosingBalance = closing;
-                        group.Parent = GetValue(node, "PARENT");
-                        group.NatureOfGroup = GetValue(node, "NATUREOFGROUP");
-                        group.IsAddable = GetValue(node, "ISADDABLE").Equals("Yes", StringComparison.OrdinalIgnoreCase);
-                        group.UpdatedAt = DateTimeOffset.UtcNow;
-                        updated++;
-                    }
-                }
-                await dbContext.SaveChangesAsync();
-                _syncMonitor.AddLog($"✅ Balance Sheet: {updated} group balances updated.", "SUCCESS", "MASTERS");
-            }
-            catch (Exception ex)
-            {
-                _syncMonitor.AddLog($"❌ Balance Sheet sync failed: {ex.Message}", "ERROR", "MASTERS");
-                _logger.LogWarning(ex, "Balance Sheet group sync failed.");
-            }
-        }
-
-        // ══════════════════════════════════════════════════════════════
-        // PHASE 9: PROFIT & LOSS GROUPS (Income + Expenditure closing balances)
-        // ══════════════════════════════════════════════════════════════
-        private async Task SyncProfitLossGroupsAsync(Guid orgId, AppDbContext dbContext)
-        {
-            try
-            {
-                var response = await _xmlService.ExportCollectionXmlAsync("AccziteProfitLossGroups", isCollection: true);
-                if (string.IsNullOrWhiteSpace(response))
-                {
-                    _syncMonitor.AddLog("⚠ P&L: empty response from Tally.", "WARNING", "MASTERS");
-                    return;
-                }
-                var doc = XDocument.Parse(response);
-                var nodes = doc.Descendants()
-                    .Where(x => x.Name.LocalName.Equals("GROUP", StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-
-                var existingGroups = await dbContext.AccountingGroups
-                    .Where(g => g.OrganizationId == orgId)
-                    .ToDictionaryAsync(g => g.Name, StringComparer.OrdinalIgnoreCase);
-
-                int updated = 0;
-                foreach (var node in nodes)
-                {
-                    var name = GetValue(node, "NAME");
-                    decimal.TryParse(GetValue(node, "CLOSINGBALANCE").Replace(",", "").Trim(), out var closing);
-                    if (existingGroups.TryGetValue(name, out var group))
-                    {
-                        group.ClosingBalance = closing;
-                        group.Parent = GetValue(node, "PARENT");
-                        group.NatureOfGroup = GetValue(node, "NATUREOFGROUP");
-                        group.AffectsGrossProfit = GetValue(node, "AFFECTSGROSSPROFIT").Equals("Yes", StringComparison.OrdinalIgnoreCase);
-                        group.UpdatedAt = DateTimeOffset.UtcNow;
-                        updated++;
-                    }
-                }
-                await dbContext.SaveChangesAsync();
-                _syncMonitor.AddLog($"✅ P&L: {updated} group balances updated.", "SUCCESS", "MASTERS");
-            }
-            catch (Exception ex)
-            {
-                _syncMonitor.AddLog($"❌ P&L group sync failed: {ex.Message}", "ERROR", "MASTERS");
-                _logger.LogWarning(ex, "P&L group sync failed.");
-            }
-        }
-
-        // ══════════════════════════════════════════════════════════════
-        // PHASE 10: BANKING LEDGERS (Bank Accounts + Bank OD closing balances)
-        // ══════════════════════════════════════════════════════════════
-        private async Task SyncBankingLedgersAsync(Guid orgId, AppDbContext dbContext)
-        {
-            try
-            {
-                var response = await _xmlService.ExportCollectionXmlAsync("AccziteBankingLedgers", isCollection: true);
-                if (string.IsNullOrWhiteSpace(response))
-                {
-                    _syncMonitor.AddLog("⚠ Banking: No bank ledgers found in Tally.", "WARNING", "MASTERS");
-                    return;
-                }
-                _syncMonitor.AddLog("🏦 Extracting Ground-Truth Banking Balances...", "INFO", "MASTERS");
-                var doc = XDocument.Parse(response);
-                var nodes = doc.Descendants()
-                    .Where(x => x.Name.LocalName.Equals("LEDGER", StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-
-                var existingLedgers = await dbContext.Ledgers
-                    .Where(l => l.OrganizationId == orgId)
-                    .ToDictionaryAsync(l => l.Name, StringComparer.OrdinalIgnoreCase);
-
-                int updated = 0, added = 0;
-                foreach (var node in nodes)
-                {
-                    var name = GetValue(node, "NAME");
-                    decimal.TryParse(GetValue(node, "CLOSINGBALANCE").Replace(",", "").Trim(), out var closing);
-                    decimal.TryParse(GetValue(node, "OPENINGBALANCE").Replace(",", "").Trim(), out var opening);
-
-                    if (existingLedgers.TryGetValue(name, out var ledger))
-                    {
-                        ledger.ClosingBalance = closing;
-                        ledger.UpdatedAt = DateTimeOffset.UtcNow;
-                        updated++;
-                    }
-                    else
-                    {
-                        // Bank ledger not yet in DB — add it
-                        dbContext.Ledgers.Add(new Ledger
-                        {
-                            Id = Guid.NewGuid(),
-                            OrganizationId = orgId,
-                            Name = name,
-                            ParentGroup = GetValue(node, "PARENT"),
-                            OpeningBalance = opening,
-                            ClosingBalance = closing,
-                            Address = GetValue(node, "ADDRESS"),
-                            MailingName = GetValue(node, "MAILINGNAME"),
-                            TallyMasterId = GetValue(node, "MASTERID"),
-                            CreatedAt = DateTimeOffset.UtcNow,
-                            UpdatedAt = DateTimeOffset.UtcNow
-                        });
-                        added++;
-                    }
-                }
-                await dbContext.SaveChangesAsync();
-                _syncMonitor.AddLog($"✅ Banking: {updated} updated, {added} new bank ledgers. Total: {nodes.Count}.", "SUCCESS", "MASTERS");
-            }
-            catch (Exception ex)
-            {
-                _syncMonitor.AddLog($"❌ Banking ledger sync failed: {ex.Message}", "ERROR", "MASTERS");
-                _logger.LogWarning(ex, "Banking ledger sync failed.");
-            }
-        }
-
-        // ══════════════════════════════════════════════════════════════
-        // PHASE 11: STOCK SUMMARY (closing rate + value for all stock items)
-        // ══════════════════════════════════════════════════════════════
-        private async Task SyncStockSummaryAsync(Guid orgId, AppDbContext dbContext)
-        {
-            try
-            {
-                var response = await _xmlService.ExportCollectionXmlAsync("AccziteStockSummary", isCollection: true);
-                if (string.IsNullOrWhiteSpace(response))
-                {
-                    _syncMonitor.AddLog("⚠ Stock Summary: empty response from Tally.", "WARNING", "MASTERS");
-                    return;
-                }
-                var doc = XDocument.Parse(response);
-                var nodes = doc.Descendants()
-                    .Where(x => x.Name.LocalName.Equals("STOCKITEM", StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-
-                var existingItems = await dbContext.StockItems
-                    .Where(s => s.OrganizationId == orgId)
-                    .ToDictionaryAsync(s => s.Name, StringComparer.OrdinalIgnoreCase);
-
-                int updated = 0;
-                foreach (var node in nodes)
-                {
-                    var name = GetValue(node, "NAME");
-                    decimal.TryParse(GetValue(node, "CLOSINGBALANCE").Replace(",", "").Trim(), out var qty);
-                    decimal.TryParse(GetValue(node, "CLOSINGRATE").Replace(",", "").Trim(), out var rate);
-                    decimal.TryParse(GetValue(node, "CLOSINGVALUE").Replace(",", "").Trim(), out var value);
-
-                    if (existingItems.TryGetValue(name, out var item))
-                    {
-                        item.ClosingBalance = qty;
-                        item.ClosingRate = rate;
-                        item.ClosingValue = value == 0 && rate > 0 ? qty * rate : value;
-                        item.UpdatedAt = DateTimeOffset.UtcNow;
-                        updated++;
-                    }
-                }
-                await dbContext.SaveChangesAsync();
-                _syncMonitor.AddLog($"✅ Stock Summary: {updated} items updated with closing rate/value.", "SUCCESS", "MASTERS");
-            }
-            catch (Exception ex)
-            {
-                _syncMonitor.AddLog($"❌ Stock Summary sync failed: {ex.Message}", "ERROR", "MASTERS");
-                _logger.LogWarning(ex, "Stock Summary sync failed.");
-            }
+            // Lightweight Hashing: Only hash Identity + Version (AlterId)
+            var identityStream = string.Join("|", data.Select(x => $"{x.TallyMasterId}:{x.TallyAlterId}"));
+            using var sha = SHA256.Create();
+            var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(identityStream));
+            return Convert.ToHexString(bytes);
         }
     }
 }
-

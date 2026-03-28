@@ -22,19 +22,22 @@ namespace Acczite20.Views.Pages
         private readonly TallySyncOrchestrator _orchestrator;
         private readonly SyncStateMonitor _syncMonitor;
         private readonly TallyXmlService _tallyService;
+        private readonly ISyncControlService _control;
         private CancellationTokenSource? _syncCts;
 
         public SyncMonitorPage(
             AppDbContext dbContext,
             TallySyncOrchestrator orchestrator,
             SyncStateMonitor syncMonitor,
-            TallyXmlService tallyService)
+            TallyXmlService tallyService,
+            ISyncControlService control)
         {
             InitializeComponent();
             _dbContext    = dbContext;
             _orchestrator = orchestrator;
             _syncMonitor  = syncMonitor;
             _tallyService = tallyService;
+            _control      = control;
 
             this.DataContext = _syncMonitor;
 
@@ -134,10 +137,21 @@ namespace Acczite20.Views.Pages
 
         // ── Pause / Resume ────────────────────────────────────────────────────────
 
-        private void PauseResume_Click(object sender, RoutedEventArgs e)
+        private async void PauseResume_Click(object sender, RoutedEventArgs e)
         {
-            _syncMonitor.IsPaused = !_syncMonitor.IsPaused;
-            PauseResumeButton.Content = _syncMonitor.IsPaused ? "Resume" : "Pause";
+            var orgId = SessionManager.Instance.OrganizationId;
+            var state = _control.GetState(orgId);
+
+            if (state.IsPaused)
+            {
+                _control.Resume(orgId);
+                PauseResumeButton.Content = "Pause";
+            }
+            else
+            {
+                await _control.PauseAsync(orgId);
+                PauseResumeButton.Content = "Resume";
+            }
         }
 
         // ── Sync actions ──────────────────────────────────────────────────────────
@@ -145,6 +159,33 @@ namespace Acczite20.Views.Pages
         private async void SyncNow_Click(object sender, RoutedEventArgs e)
         {
             if (_syncMonitor.IsSyncing) return;
+
+            var orgId = SessionManager.Instance.OrganizationId;
+            if (orgId == Guid.Empty)
+            {
+                await CustomDialog.ShowAsync("Organization Required", "Please select a valid organization.", CustomDialog.DialogType.Warning);
+                return;
+            }
+
+            if (!_control.TryStart(orgId, SyncOwner.Manual))
+            {
+                var status = _control.GetState(orgId);
+                if (status.Owner == SyncOwner.HostedService)
+                {
+                    await CustomDialog.ShowAsync(
+                        "Background Sync Active",
+                        "Background sync is currently processing. Please wait for it to finish.",
+                        CustomDialog.DialogType.Warning);
+                }
+                else
+                {
+                    await CustomDialog.ShowAsync(
+                        "Sync Active",
+                        "A synchronization cycle is already running.",
+                        CustomDialog.DialogType.Warning);
+                }
+                return;
+            }
 
             // Apply selected batch size to the monitor so the orchestrator picks it up.
             if (BatchSizeCombo.SelectedItem is ComboBoxItem batchItem &&
@@ -175,7 +216,6 @@ namespace Acczite20.Views.Pages
 
             try
             {
-                var orgId = SessionManager.Instance.OrganizationId;
                 await _orchestrator.RunFullSyncAsync(orgId, null, null, _syncCts.Token);
                 await RefreshDataAsync();
             }
@@ -189,6 +229,10 @@ namespace Acczite20.Views.Pages
             }
             finally
             {
+                var state = _control.GetState(orgId);
+                state.Status = SyncLifecycle.Idle;
+                state.Owner = SyncOwner.None;
+
                 PauseResumeButton.IsEnabled = false;
                 _syncMonitor.IsPaused = false;
                 PauseResumeButton.Content = "Pause";

@@ -6,7 +6,8 @@
         WindowStartupLocation="CenterScreen"
         Background="#FAFAFA"
         ResizeMode="CanResize"
-        FontFamily="Times New Roman">
+        FontFamily="Times New Roman"
+        Icon="/Assets/app.ico">
 
 	<Window.Resources>
 		<!-- Primary Button Style -->

@@ -12,6 +12,8 @@
 
 		<Configurations>Debug;Release;x64</Configurations>
 		<Platforms>AnyCPU;x64;ARM32;ARM64</Platforms>
+		<NoWarn>$(NoWarn);CA1416</NoWarn>
+		<ApplicationIcon>Assets\app.ico</ApplicationIcon>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -75,6 +77,10 @@
 
 	<ItemGroup>
 	  <Folder Include="Properties\PublishProfiles\" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Resource Include="Assets\app.ico" />
 	</ItemGroup>
 
 </Project>

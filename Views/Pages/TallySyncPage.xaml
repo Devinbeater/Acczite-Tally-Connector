@@ -239,16 +239,41 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" 
+                                    <Border Grid.Column="0"
+                                            Width="28" Height="28"
+                                            Margin="0,0,10,0"
+                                            CornerRadius="14"
+                                            Background="{StaticResource PrimaryTeal}"
+                                            VerticalAlignment="Center">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SequenceNumber}" Value="0">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <TextBlock Text="{Binding SequenceNumber}"
+                                                   Foreground="White"
+                                                   FontSize="12"
+                                                   FontWeight="Bold"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"/>
+                                    </Border>
+                                    <CheckBox Grid.Column="1"
+                                              IsChecked="{Binding IsSelected, Mode=TwoWay}" 
                                               VerticalAlignment="Center" Margin="0,0,10,0" 
                                               Foreground="{StaticResource PrimaryTeal}"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding Name}" 
+                                    <TextBlock Grid.Column="2" Text="{Binding Name}" 
                                                FontSize="13" FontWeight="SemiBold" 
                                                VerticalAlignment="Center" Foreground="{StaticResource CharcoalText}"/>
-                                    <TextBlock Grid.Column="2" Text="{Binding Count}" 
+                                    <TextBlock Grid.Column="3" Text="{Binding Count}" 
                                                FontSize="12" FontWeight="Bold" VerticalAlignment="Center"
                                                Foreground="{StaticResource PrimaryTeal}" Width="40" TextAlignment="Right"/>
                                 </Grid>

@@ -35,6 +35,7 @@ namespace Acczite20.Services.Sync
         private readonly VoucherSyncProgressAggregator _progress;
         private readonly SyncStateMonitor _syncMonitor;
         private readonly TallyXmlService _tallyService;
+        private readonly ISyncControlService _syncControl;
 
         public VoucherSyncController(
             VoucherSyncChunkScheduler scheduler,
@@ -42,7 +43,8 @@ namespace Acczite20.Services.Sync
             VoucherSyncDbWriter dbWriter,
             VoucherSyncProgressAggregator progress,
             SyncStateMonitor syncMonitor,
-            TallyXmlService tallyService)
+            TallyXmlService tallyService,
+            ISyncControlService syncControl)
         {
             _scheduler    = scheduler;
             _executor     = executor;
@@ -50,6 +52,7 @@ namespace Acczite20.Services.Sync
             _progress     = progress;
             _syncMonitor  = syncMonitor;
             _tallyService = tallyService;
+            _syncControl  = syncControl;
         }
 
         // ── Manual date iteration ────────────────────────────────────────────────
@@ -97,15 +100,19 @@ namespace Acczite20.Services.Sync
                 ct.ThrowIfCancellationRequested();
 
                 // ── Pause gate ──────────────────────────────────────────────────
-                while (_syncMonitor.IsPaused)
+                var syncCtx = _syncControl.GetState(orgId);
+                if (syncCtx.IsPaused)
                 {
                     _syncMonitor.SetStage(
                         "Paused",
                         "Sync is paused. Click Resume to continue.",
                         _syncMonitor.ProgressPercent,
                         false);
-                    await Task.Delay(500, ct);
                 }
+                await syncCtx.PauseGate.WaitAsync(ct);
+                syncCtx.PauseGate.Release();
+
+                syncCtx.CurrentPhase = "Voucher Sync";
 
                 // ── Preventive Memory Backoff ───────────────────────────────────
                 var currentProcess = System.Diagnostics.Process.GetCurrentProcess();

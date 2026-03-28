@@ -45,6 +45,7 @@ namespace Acczite20.Views.Pages
         private readonly SyncStateMonitor _syncMonitor;
         private readonly INavigationService _navigationService;
         private readonly DashboardService _dashboardService;
+        private readonly ISyncControlService _syncControl;
         private readonly DispatcherTimer _refreshTimer;
 
         public ISeries[] Series
@@ -171,6 +172,8 @@ namespace Acczite20.Views.Pages
             }
         }
 
+        public SyncState ControlState => _syncControl.GetState(SessionManager.Instance.OrganizationId);
+
         public SyncStateMonitor Monitor => _syncMonitor;
 
         public DashboardPage(
@@ -178,13 +181,15 @@ namespace Acczite20.Views.Pages
             INavigationService navigationService,
             DashboardService dashboardService,
             TallyXmlService tallyService,
-            TallyCompanyService tallyCompanyService)
+            TallyCompanyService tallyCompanyService,
+            ISyncControlService syncControl)
         {
             _syncMonitor = syncMonitor;
             _navigationService = navigationService;
             _dashboardService = dashboardService;
             _tallyService = tallyService;
             _tallyCompanyService = tallyCompanyService;
+            _syncControl = syncControl;
 
             InitializeComponent();
             DataContext = this;
@@ -193,9 +198,13 @@ namespace Acczite20.Views.Pages
 
             _refreshTimer = new DispatcherTimer
             {
-                Interval = TimeSpan.FromSeconds(10)
+                Interval = TimeSpan.FromSeconds(2)
             };
-            _refreshTimer.Tick += async (_, _) => await LoadDashboardDataAsync();
+            _refreshTimer.Tick += async (_, _) => 
+            {
+                OnPropertyChanged(nameof(ControlState));
+                await LoadDashboardDataAsync();
+            };
         }
 
         protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
@@ -244,6 +253,27 @@ namespace Acczite20.Views.Pages
 
             await RefreshTallyStatusAsync(addLog: true);
             LastSyncTime.Text = DateTime.Now.ToString("hh:mm tt");
+        }
+
+        private void StopSync_Click(object sender, RoutedEventArgs e)
+        {
+            var orgId = SessionManager.Instance.OrganizationId;
+            _syncControl.CancelSync(orgId);
+            OnPropertyChanged(nameof(ControlState));
+        }
+
+        private async void PauseSync_Click(object sender, RoutedEventArgs e)
+        {
+            var orgId = SessionManager.Instance.OrganizationId;
+            await _syncControl.PauseAsync(orgId);
+            OnPropertyChanged(nameof(ControlState));
+        }
+
+        private void ResumeSync_Click(object sender, RoutedEventArgs e)
+        {
+            var orgId = SessionManager.Instance.OrganizationId;
+            _syncControl.Resume(orgId);
+            OnPropertyChanged(nameof(ControlState));
         }
 
         private async System.Threading.Tasks.Task RefreshTallyStatusAsync(bool addLog)

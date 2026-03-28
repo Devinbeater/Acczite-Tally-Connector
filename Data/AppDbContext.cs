@@ -35,6 +35,7 @@ namespace Acczite20.Data
         public DbSet<SyncMetadata> SyncMetadataRecords { get; set; }
         public DbSet<SyncLog> SyncLogs { get; set; }
         public DbSet<DeadLetter> DeadLetters { get; set; }
+        public DbSet<MongoProjectionQueue> MongoProjectionQueue { get; set; }
         public DbSet<TallySyncConfiguration> TallySyncConfigurations { get; set; }
         
         // Integration Layer (MERN <-> Tally <-> WPF)
@@ -53,6 +54,8 @@ namespace Acczite20.Data
         public DbSet<StockCategory> StockCategories { get; set; }
         public DbSet<Unit> Units { get; set; }
         public DbSet<Godown> Godowns { get; set; }
+        public DbSet<CostCategory> CostCategories { get; set; }
+        public DbSet<CostCentre> CostCentres { get; set; }
 
         // ── Warehouse Fact & Dimension Tables ──
         public DbSet<FactVoucher> FactVouchers { get; set; }
@@ -103,6 +106,22 @@ namespace Acczite20.Data
                 .HasIndex(v => new { v.CompanyId, v.TallyMasterId })
                 .IsUnique()
                 .HasFilter("[TallyMasterId] IS NOT NULL");
+
+            // UNIQUE BUSINESS KEY (Enterprise Integrity)
+            modelBuilder.Entity<Voucher>()
+                .HasIndex(v => new { v.OrganizationId, v.VoucherNumber, v.VoucherDate })
+                .IsUnique()
+                .HasFilter("[VoucherNumber] IS NOT NULL");
+
+            // SEARCH INDEXES (Performance)
+            modelBuilder.Entity<Ledger>()
+                .HasIndex(l => new { l.OrganizationId, l.Name });
+
+            modelBuilder.Entity<AccountingGroup>()
+                .HasIndex(a => new { a.OrganizationId, a.Name });
+
+            modelBuilder.Entity<MongoProjectionQueue>()
+                .HasIndex(m => new { m.OrganizationId, m.CreatedAt });
 
             // ── Warehouse Indexes (High Performance) ──
             modelBuilder.Entity<FactVoucher>()

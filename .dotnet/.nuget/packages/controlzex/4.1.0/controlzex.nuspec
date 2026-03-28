@@ -1,0 +1,34 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>ControlzEx</id>
+    <version>4.1.0</version>
+    <authors>Jan Karger, Bastian Schmidt, James Willock</authors>
+    <owners>Jan Karger, Bastian Schmidt, James Willock</owners>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <licenseUrl>https://github.com/ControlzEx/ControlzEx/blob/develop/LICENSE</licenseUrl>
+    <projectUrl>https://github.com/ControlzEx/ControlzEx</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/ControlzEx/ControlzEx/develop/logo-mini.png</iconUrl>
+    <description>ControlzEx is a library with some shared Controls for WPF.</description>
+    <releaseNotes>https://github.com/ControlzEx/ControlzEx/releases</releaseNotes>
+    <copyright>Copyright © 2015 - 2019 Jan Karger, Bastian Schmidt, James Willock</copyright>
+    <tags>WPF UI Metro Modern Material XAML Toolkit Library .NET OSS OpenSource WindowChrome</tags>
+    <repository type="git" url="https://github.com/ControlzEx/ControlzEx.git" branch="master" commit="3ac97ba86d46c4eb08a0f67695a80d8efbfd0ad7" />
+    <dependencies>
+      <group targetFramework=".NETFramework4.5">
+        <dependency id="Microsoft.Xaml.Behaviors.Wpf" version="1.0.1" exclude="Build,Analyzers" />
+      </group>
+      <group targetFramework=".NETFramework4.6.2">
+        <dependency id="Microsoft.Xaml.Behaviors.Wpf" version="1.0.1" exclude="Build,Analyzers" />
+      </group>
+      <group targetFramework=".NETCoreApp3.0">
+        <dependency id="Microsoft.Xaml.Behaviors.Wpf" version="1.0.1" exclude="Build,Analyzers" />
+      </group>
+    </dependencies>
+    <frameworkReferences>
+      <group targetFramework=".NETCoreApp3.0">
+        <frameworkReference name="Microsoft.WindowsDesktop.App.WPF" />
+      </group>
+    </frameworkReferences>
+  </metadata>
+</package>

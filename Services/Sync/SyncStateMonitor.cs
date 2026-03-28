@@ -110,8 +110,37 @@ namespace Acczite20.Services.Sync
                 _isSyncing = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(ProgressCaption));
+                OnPropertyChanged(nameof(ProgressCaption));
                 OnPropertyChanged(nameof(LiveMetricsSummary));
             }
+        }
+
+        private double _mongoProjectionLagMs;
+        public double MongoProjectionLagMs
+        {
+            get => _mongoProjectionLagMs;
+            set { _mongoProjectionLagMs = value; OnPropertyChanged(); OnPropertyChanged(nameof(LiveMetricsSummary)); }
+        }
+
+        private DateTime? _lastMongoProjectedAt;
+        public DateTime? LastMongoProjectedAt
+        {
+            get => _lastMongoProjectedAt;
+            set { _lastMongoProjectedAt = value; OnPropertyChanged(); }
+        }
+
+        private int _mongoQueueDepth;
+        public int MongoQueueDepth
+        {
+            get => _mongoQueueDepth;
+            set { _mongoQueueDepth = value; OnPropertyChanged(); OnPropertyChanged(nameof(LiveMetricsSummary)); }
+        }
+
+        private int _replayQueueSize;
+        public int ReplayQueueSize
+        {
+            get => _replayQueueSize;
+            set { _replayQueueSize = value; OnPropertyChanged(); OnPropertyChanged(nameof(LiveMetricsSummary)); }
         }
 
         private bool _isPaused;
@@ -213,7 +242,7 @@ namespace Acczite20.Services.Sync
 
         /// <summary>One-line metrics strip shown in the UI header area.</summary>
         public string LiveMetricsSummary => IsSyncing
-            ? $"Window {LiveWindowHours:0.#}h | Delay {LiveDelayMs / 1000.0:0.#}s | Retries {LiveRetries} | Mode {SyncMode}"
+            ? $"Window {LiveWindowHours:0.#}h | Lag {MongoProjectionLagMs:N0}ms | Q {MongoQueueDepth} | Replay {ReplayQueueSize} | Mode {SyncMode}"
             : "Sync engine idle";
 
         private DateTime? _lastSyncTime;

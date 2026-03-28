@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Acczite20.Services.Sync;
+using Acczite20.Services.Tally;
 
 namespace Acczite20.Services
 {
@@ -289,6 +290,13 @@ namespace Acczite20.Services
                 return null;
             }
             catch { return null; }
+        }
+
+        public static bool IsUnresolvedCompany(string? companyName)
+        {
+            return string.IsNullOrWhiteSpace(companyName)
+                || string.Equals(companyName, "None", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(companyName, "Default Company", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string? ExtractFirstTagValue(string xml, string tagName)
@@ -1295,11 +1303,46 @@ namespace Acczite20.Services
             }
         }
 
-        private static bool IsUnresolvedCompany(string? companyName)
+        // ── High-level Master Fetchers ──
+
+        public async Task<List<TallyMasterDto>> GetGroupsAsync() => await GetMasterCollectionAsync("List of Groups", "GROUP");
+        public async Task<List<TallyMasterDto>> GetLedgersAsync() => await GetMasterCollectionAsync("AccziteLedgerHeaders", "LEDGER");
+        public async Task<List<TallyMasterDto>> GetVoucherTypesAsync() => await GetMasterCollectionAsync("VoucherType", "VOUCHERTYPE");
+        public async Task<List<TallyMasterDto>> GetUnitsAsync() => await GetMasterCollectionAsync("List of Units", "UNIT");
+        public async Task<List<TallyMasterDto>> GetGodownsAsync() => await GetMasterCollectionAsync("List of Godowns", "GODOWN");
+        public async Task<List<TallyMasterDto>> GetStockGroupsAsync() => await GetMasterCollectionAsync("List of Stock Groups", "STOCKGROUP");
+        public async Task<List<TallyMasterDto>> GetStockItemsAsync() => await GetMasterCollectionAsync("List of Stock Items", "STOCKITEM");
+        public async Task<List<TallyMasterDto>> GetCostCategoriesAsync() => await GetMasterCollectionAsync("List of Cost Categories", "COSTCATEGORY");
+        public async Task<List<TallyMasterDto>> GetCostCentresAsync() => await GetMasterCollectionAsync("List of Cost Centres", "COSTCENTRE");
+
+        private async Task<List<TallyMasterDto>> GetMasterCollectionAsync(string collectionId, string tagName)
         {
-            return string.IsNullOrWhiteSpace(companyName)
-                || string.Equals(companyName, "None", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(companyName, "Default Company", StringComparison.OrdinalIgnoreCase);
+            var xml = await ExportCollectionXmlAsync(collectionId, isCollection: true);
+            if (string.IsNullOrWhiteSpace(xml)) return new List<TallyMasterDto>();
+
+            try
+            {
+                var settings = new System.Xml.XmlReaderSettings { CheckCharacters = false };
+                using var reader = System.Xml.XmlReader.Create(new System.IO.StringReader(xml), settings);
+                var doc = XDocument.Load(reader);
+                return doc.Descendants().Where(x => x.Name.LocalName.Equals(tagName, StringComparison.OrdinalIgnoreCase))
+                    .Select(node => new TallyMasterDto
+                    {
+                        Name = GetTallyValue(node, "NAME"),
+                        Parent = GetTallyValue(node, "PARENT"),
+                        TallyMasterId = node.Element("MASTERID")?.Value ?? GetTallyValue(node, "NAME"),
+                        TallyAlterId = long.TryParse(node.Element("ALTERID")?.Value, out var aid) ? aid : 0,
+                        Properties = node.Elements().ToDictionary(e => e.Name.LocalName, e => e.Value)
+                    }).ToList();
+            }
+            catch { return new List<TallyMasterDto>(); }
         }
+
+        private static string GetTallyValue(XElement node, string tag)
+        {
+            return node.Element(tag)?.Value ?? node.Element(tag.ToUpper())?.Value ?? string.Empty;
+        }
+
+        private static string GetValue(XElement node, string tag) => GetTallyValue(node, tag);
     }
 }

@@ -324,6 +324,8 @@ namespace Acczite20.Views.Pages
                 item.SequenceNumber = order++;
             foreach (var item in _viewModel.TallyFields.Where(x => !x.IsSelected))
                 item.SequenceNumber = 0;
+
+            _tallyView?.Refresh();
         }
 
         private async void PreviewFields_Click(object sender, RoutedEventArgs e)

@@ -372,6 +372,29 @@
                            Foreground="{StaticResource GrayText}"
                            HorizontalAlignment="Center"
                            Margin="0,14,0,0"/>
+
+                <!-- Sync Controls -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,20,0,10">
+                    <Button Content="Pause" Click="PauseSync_Click" Width="80" Margin="0,0,10,0"/>
+                    <Button Content="Resume" Click="ResumeSync_Click" Width="80" Margin="0,0,10,0"/>
+                    <Button Content="Stop Sync" Click="StopSync_Click" Background="#EF4444" Foreground="White" Width="90"/>
+                </StackPanel>
+
+                <!-- Expandable Live Logs -->
+                <Expander Header="Live Sync Logs" Width="360" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="160">
+                        <ItemsControl ItemsSource="{Binding Monitor.Logs}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BorderBrush="#F3F4F6" BorderThickness="0,0,0,1" Padding="0,4">
+                                        <TextBlock Text="{Binding FullLogLine}" Foreground="#4B5563" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap"/>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Expander>
+
             </StackPanel>
         </Border>
     </Grid>

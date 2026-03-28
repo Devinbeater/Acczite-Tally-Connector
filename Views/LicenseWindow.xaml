@@ -8,7 +8,8 @@
         ResizeMode="NoResize"
         WindowStyle="None"
         Background="{StaticResource LightTealBg}"
-        AllowsTransparency="False">
+        AllowsTransparency="False"
+        Icon="/Assets/app.ico">
 
     <Window.Resources>
         <Style x:Key="WindowActionButtonStyle" TargetType="Button">

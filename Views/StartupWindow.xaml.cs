@@ -12,6 +12,7 @@ namespace Acczite20.Views
         public StartupWindow()
         {
             InitializeComponent();
+            try { this.Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/Assets/app.ico")); } catch { }
             Loaded += StartupWindow_Loaded;
         }
 

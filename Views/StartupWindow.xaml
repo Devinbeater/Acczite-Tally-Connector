@@ -11,7 +11,8 @@
         Width="1400"
         MinHeight="720"
         MinWidth="1200"
-        Background="{StaticResource LightTealBg}">
+        Background="{StaticResource LightTealBg}"
+        Icon="pack://application:,,,/Assets/app.ico">
 
     <Window.Resources>
         <LinearGradientBrush x:Key="StartupBackdrop" StartPoint="0,0" EndPoint="1,1">

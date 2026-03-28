@@ -1,0 +1,21 @@
+﻿<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2011/10/nuspec.xsd">
+  <metadata>
+    <id>OpenTK.GLWpfControl</id>
+    <version>3.3.0</version>
+    <title>OpenTK.GLWpfControl</title>
+    <authors>Team OpenTK</authors>
+    <owners>opentk varon</owners>
+    <licenseUrl>https://github.com/varon/GLWpfControl/blob/master/LICENSE.md</licenseUrl>
+    <projectUrl>https://www.opentk.net</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/opentk/opentk.net/docfx/assets/opentk.png</iconUrl>
+    <description>A native WPF control for OpenTK 4.X.</description>
+    <summary>A native WPF control for OpenTK 3.x</summary>
+    <releaseNotes>Add NonReloadingTabControl.
+Add example with new NonReloadingTabControl.</releaseNotes>
+    <copyright>Copyright (c) 2020 Team OpenTK.</copyright>
+    <dependencies>
+      <dependency id="OpenTK" version="[3.3.0,3.4.0)" />
+    </dependencies>
+  </metadata>
+</package>

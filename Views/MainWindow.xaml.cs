@@ -28,6 +28,7 @@ namespace Acczite20.Views
             _serviceProvider = serviceProvider;
             _syncMonitor = serviceProvider.GetRequiredService<SyncStateMonitor>();
             InitializeComponent();
+            try { this.Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/Assets/app.ico")); } catch { }
             Loaded += MainWindow_Loaded;
             Closed += MainWindow_Closed;
             MainFrame.Navigated += MainFrame_Navigated;

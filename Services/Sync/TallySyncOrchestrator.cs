@@ -11,6 +11,7 @@ using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
+using MongoDB.Bson;
 using Acczite20.Data;
 using Acczite20.Models;
 using Acczite20.Services;
@@ -56,8 +57,11 @@ namespace Acczite20.Services.Sync
         private readonly TallyMasterSyncService _masterSyncService;
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _scopeFactory;
         private readonly MongoService _mongoService;
-        private readonly ISyncLockProvider _lockProvider;
         private readonly TallyCompanyService _tallyCompanyService;
+        private readonly DeadLetterReplayService _replayService;
+        private readonly IMongoProjector _projector;
+        private readonly ISyncLockProvider _lockProvider;
+        private readonly ISyncControlService _control;
         private Guid _currentRunId;
         private bool _isSyncRunning = false;
         private CancellationTokenSource? _continuousSyncCts;
@@ -76,7 +80,7 @@ namespace Acczite20.Services.Sync
         private const int ProbeMaxSubdivisionDepth = 3;
         private static readonly TimeSpan ProbeMinSubdivideRange = TimeSpan.FromDays(14);
 
-        private async Task AddToDeadLetterAsync(Guid orgId, Guid companyId, string masterId, string reason, string xml)
+        private async Task AddToDeadLetterAsync(Guid orgId, Guid companyId, string masterId, string reason, string xml, DeadLetterFailureType failureType = DeadLetterFailureType.MissingMaster)
         {
             try
             {
@@ -91,7 +95,8 @@ namespace Acczite20.Services.Sync
                     ErrorReason = reason,
                     PayloadXml = xml,
                     DetectedAt = DateTimeOffset.UtcNow,
-                    EntityType = "Voucher"
+                    EntityType = "Voucher",
+                    FailureType = failureType
                 });
                 await db.SaveChangesAsync();
             }
@@ -110,7 +115,10 @@ namespace Acczite20.Services.Sync
             Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopeFactory,
             MongoService mongoService,
             ISyncLockProvider lockProvider,
-            TallyCompanyService tallyCompanyService)
+            TallyCompanyService tallyCompanyService,
+            DeadLetterReplayService replayService,
+            IMongoProjector projector,
+            ISyncControlService control)
         {
             _logger = logger;
             _tallyService = tallyService;
@@ -121,6 +129,9 @@ namespace Acczite20.Services.Sync
             _mongoService = mongoService;
             _lockProvider = lockProvider;
             _tallyCompanyService = tallyCompanyService;
+            _replayService = replayService;
+            _projector = projector;
+            _control = control;
         }
 
         public async Task RunDryRunValidationAsync(Guid orgId, CancellationToken ct)
@@ -196,6 +207,16 @@ namespace Acczite20.Services.Sync
                 c.Equals("Day Book", StringComparison.OrdinalIgnoreCase) || 
                 c.Equals("Daybook", StringComparison.OrdinalIgnoreCase));
 
+            if (!_control.TryStart(orgId, SyncOwner.HostedService))
+            {
+                _syncMonitor.AddLog("⚠ A synchronization cycle is already active in Control Service. Ignoring.", "WARNING", "CONCURRENCY");
+                return;
+            }
+
+            var state = _control.GetState(orgId);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, state.Cts.Token);
+            var effectiveCt = linkedCts.Token;
+
             if (!_syncMonitor.IsSyncing)
                 _syncMonitor.BeginRun("Starting sync...", $"Mode: {(isFullRun ? "Full" : "Selective")}");
             else
@@ -220,17 +241,27 @@ namespace Acczite20.Services.Sync
                 if (syncManagers)
                 {
                     _syncMonitor.SetStage("Masters Sync", "Processing ledgers and groups...", 20, true);
-                    await _masterSyncService.SyncAllMastersAsync(orgId, selectedCollections);
+                    await _masterSyncService.SyncAllMastersAsync(orgId);
+
+                    // --- Phase 3: Dead-Letter Replay ---
+                    // After masters are in sync, try to resolve previously failed vouchers.
+                    _syncMonitor.SetStage("Replay Sync", "Re-processing failed vouchers...", 35, true);
+                    await _replayService.ReplayAsync(orgId, effectiveCt);
                 }
 
                 if (syncVouchers)
                 {
                     _syncMonitor.SetStage("Voucher Sync", "Streaming transactions...", 50, true);
-                    await SyncVouchersWithChannelsAsync(orgId, ct, fromDate, toDate);
+                    await SyncVouchersWithChannelsAsync(orgId, effectiveCt, fromDate, toDate);
                 }
 
                 stopwatch.Stop();
                 _syncMonitor.CompleteRun($"Sync completed in {stopwatch.Elapsed:mm\\:ss}.");
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogInformation("Sync cycle cancelled for {Org}", orgId);
+                _syncMonitor.CancelRun("Synchronization aborted by user or timeout.");
             }
             catch (Exception ex)
             {
@@ -239,6 +270,8 @@ namespace Acczite20.Services.Sync
             }
             finally
             {
+                var finalState = _control.GetState(orgId);
+                finalState.Status = SyncLifecycle.Idle;
                 _isSyncRunning = false;
             }
         }
@@ -462,6 +495,7 @@ namespace Acczite20.Services.Sync
         }
 
         private DateTimeOffset _lastReconciliationTime = DateTimeOffset.MinValue;
+        private DateTimeOffset _lastReplayTime = DateTimeOffset.MinValue;
 
         private async Task ContinuousSyncLoopAsync(Guid orgId, IEnumerable<string>? selectedCollections, int intervalMinutes, CancellationToken ct)
         {
@@ -509,6 +543,14 @@ namespace Acczite20.Services.Sync
                         {
                             await RunReconciliationSyncAsync(orgId, ct);
                             _lastReconciliationTime = DateTimeOffset.Now;
+                        }
+
+                        // Periodic Dead-Letter Replay (Every 5 mins)
+                        if ((DateTimeOffset.Now - _lastReplayTime).TotalMinutes >= 5)
+                        {
+                            _syncMonitor.AddLog("🔄 [AUTO-REPLAY] Starting periodic dead-letter recovery...", "INFO", "DAEMON");
+                            await _replayService.ReplayAsync(orgId, ct);
+                            _lastReplayTime = DateTimeOffset.Now;
                         }
 
                         // 6. Zero-Tolerance Anomaly Detection
@@ -665,8 +707,8 @@ namespace Acczite20.Services.Sync
 
             var scheduler = new VoucherSyncChunkScheduler(TimeSpan.FromHours(1), layer2BatchSize, coarseDensityLimit);
             var executor = new TallyVoucherRequestExecutor(_tallyService, _xmlParser, scheduler, _syncMonitor);
-            var dbWriter = new VoucherSyncDbWriter(orgId, _scopeFactory, _syncMonitor, progress, sw);
-            var controller = new VoucherSyncController(scheduler, executor, dbWriter, progress, _syncMonitor, _tallyService);
+            var dbWriter = new VoucherSyncDbWriter(orgId, _scopeFactory, _syncMonitor, progress, sw, _projector, layer2BatchSize);
+            var controller = new VoucherSyncController(scheduler, executor, dbWriter, progress, _syncMonitor, _tallyService, _control);
 
             await controller.RunAsync(orgId, companyId, currentSyncFrom, to, (voucher, token) => PrepareVoucherForWriteAsync(orgId, companyId, voucher, token),
                 async (chunk, metrics, token) =>
@@ -727,18 +769,28 @@ namespace Acczite20.Services.Sync
 
             var vn = voucher.VoucherType?.Name ?? "Journal";
             voucher.VoucherTypeId = _cache.GetVoucherTypeId(vn);
-            if (voucher.VoucherTypeId == Guid.Empty) voucher.VoucherTypeId = _cache.GetVoucherTypeId("Journal");
-
-            if (voucher.VoucherTypeId == Guid.Empty) return null;
+            if (voucher.VoucherTypeId == Guid.Empty)
+            {
+                await AddToDeadLetterAsync(orgId, companyId, voucher.TallyMasterId ?? "Unknown", $"Missing VoucherType: {vn}", "RE-FETCH_REQUIRED", DeadLetterFailureType.MissingMaster);
+                return null;
+            }
 
             foreach (var le in voucher.LedgerEntries)
             {
-                if (_cache.GetLedgerId(le.LedgerName) == Guid.Empty) return null;
+                if (_cache.GetLedgerId(le.LedgerName) == Guid.Empty)
+                {
+                    await AddToDeadLetterAsync(orgId, companyId, voucher.TallyMasterId ?? "Unknown", $"Missing Ledger: {le.LedgerName}", "RE-FETCH_REQUIRED", DeadLetterFailureType.MissingMaster);
+                    return null;
+                }
             }
 
             var debit = voucher.LedgerEntries.Sum(le => le.DebitAmount);
             var credit = voucher.LedgerEntries.Sum(le => le.CreditAmount);
-            if (!voucher.IsCancelled && Math.Abs(debit - credit) > 0.01m) return null;
+            if (!voucher.IsCancelled && Math.Abs(debit - credit) > 0.01m)
+            {
+                 await AddToDeadLetterAsync(orgId, companyId, voucher.TallyMasterId ?? "Unknown", $"Balanced mismatch: Dr={debit}, Cr={credit}", "RE-FETCH_REQUIRED", DeadLetterFailureType.ValidationError);
+                 return null;
+            }
 
             voucher.UpdatedAt = DateTimeOffset.UtcNow;
             voucher.SyncRunId = _currentRunId;
@@ -820,13 +872,17 @@ namespace Acczite20.Services.Sync
                     using (var scope = _scopeFactory.CreateScope())
                     {
                         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                        var meta = await db.SyncMetadataRecords.FirstOrDefaultAsync(m => m.OrganizationId == orgId && m.EntityType == "Voucher");
+                        var meta = await db.SyncMetadataRecords.FirstOrDefaultAsync(m => m.OrganizationId == orgId && m.EntityType == "Voucher", ct);
                         if (meta != null) meta.LastSuccessfulSync = fromDate;
-                        await db.SaveChangesAsync();
+                        await db.SaveChangesAsync(ct);
                     }
                     await RunSyncCycleInternalAsync(ct, fromDate, toDate, selectedCollections);
                 }
                 finally { await _lockProvider.ReleaseLockAsync(lockKey); }
+            }
+            else
+            {
+                _syncMonitor.FailRun("Could not acquire sync lock. A synchronization is already running.");
             }
         }
 
@@ -1038,6 +1094,47 @@ namespace Acczite20.Services.Sync
                 return doc.Descendants("VOUCHER").Count();
             }
             catch { return -1; }
+        }
+        public async Task<bool> ProcessVoucherXmlAsync(Guid orgId, string xml)
+        {
+            try
+            {
+                var doc = XDocument.Parse(xml);
+                var voucherElement = doc.Descendants("VOUCHER").FirstOrDefault();
+                if (voucherElement == null) return false;
+
+                // Resolve company for cache normalization
+                using var scope = _scopeFactory.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var company = await db.Companies.FirstOrDefaultAsync(c => c.OrganizationId == orgId);
+                if (company == null) return false;
+
+                if (_cache == null)
+                {
+                    _cache = scope.ServiceProvider.GetRequiredService<MasterDataCache>();
+                    await _cache.InitializeAsync(orgId);
+                }
+
+                var voucher = _xmlParser.ParseVoucherEntity(voucherElement, orgId, company.Id);
+                if (voucher == null) return false;
+
+                var prepared = await PrepareVoucherForWriteAsync(orgId, company.Id, voucher, CancellationToken.None);
+                if (prepared == null) return false;
+
+                // Save to SQL
+                var handler = scope.ServiceProvider.GetRequiredService<BulkInsertHandler>();
+                await handler.BulkInsertVouchersAsync(new List<Voucher> { prepared });
+
+                // Project to Mongo
+                _projector.Project("vouchers", prepared.ToBsonDocument());
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to process replayed voucher XML.");
+                return false;
+            }
         }
     }
 }

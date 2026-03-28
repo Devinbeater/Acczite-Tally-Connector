@@ -1,0 +1,56 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>LiveChartsCore.SkiaSharpView.WPF</id>
+    <version>2.0.0-rc5.4</version>
+    <authors>BetoRodriguez</authors>
+    <requireLicenseAcceptance>true</requireLicenseAcceptance>
+    <license type="expression">MIT</license>
+    <licenseUrl>https://licenses.nuget.org/MIT</licenseUrl>
+    <icon>icon.png</icon>
+    <description>Simple, flexible, interactive and powerful data visualization for WPF.</description>
+    <repository type="git" url="https://github.com/beto-rodriguez/LiveCharts2" branch="refs/heads/master" commit="1af9df52805dc7baa013970a54db6dac21d1c869" />
+    <dependencies>
+      <group targetFramework=".NETFramework4.6.2">
+        <dependency id="LiveChartsCore.SkiaSharpView" version="2.0.0-rc5.4" exclude="Build,Analyzers" />
+        <dependency id="SkiaSharp.HarfBuzz" version="2.88.9" exclude="Build,Analyzers" />
+        <dependency id="SkiaSharp.Views.WPF" version="2.88.9" exclude="Build,Analyzers" />
+      </group>
+      <group targetFramework="net6.0-windows7.0">
+        <dependency id="LiveChartsCore.SkiaSharpView" version="2.0.0-rc5.4" exclude="Build,Analyzers" />
+        <dependency id="SkiaSharp.HarfBuzz" version="3.116.1" exclude="Build,Analyzers" />
+        <dependency id="SkiaSharp.Views.WPF" version="3.116.1" exclude="Build,Analyzers" />
+      </group>
+      <group targetFramework="net6.0-windows10.0.19041">
+        <dependency id="LiveChartsCore.SkiaSharpView" version="2.0.0-rc5.4" exclude="Build,Analyzers" />
+        <dependency id="SkiaSharp.HarfBuzz" version="3.116.1" exclude="Build,Analyzers" />
+        <dependency id="SkiaSharp.Views.WPF" version="3.116.1" exclude="Build,Analyzers" />
+      </group>
+      <group targetFramework="net8.0-windows7.0">
+        <dependency id="LiveChartsCore.SkiaSharpView" version="2.0.0-rc5.4" exclude="Build,Analyzers" />
+        <dependency id="SkiaSharp.HarfBuzz" version="3.116.1" exclude="Build,Analyzers" />
+        <dependency id="SkiaSharp.Views.WPF" version="3.116.1" exclude="Build,Analyzers" />
+      </group>
+      <group targetFramework="net8.0-windows10.0.19041">
+        <dependency id="LiveChartsCore.SkiaSharpView" version="2.0.0-rc5.4" exclude="Build,Analyzers" />
+        <dependency id="SkiaSharp.HarfBuzz" version="3.116.1" exclude="Build,Analyzers" />
+        <dependency id="SkiaSharp.Views.WPF" version="3.116.1" exclude="Build,Analyzers" />
+      </group>
+    </dependencies>
+    <frameworkReferences>
+      <group targetFramework="net6.0-windows7.0">
+        <frameworkReference name="Microsoft.WindowsDesktop.App.WPF" />
+      </group>
+      <group targetFramework="net6.0-windows10.0.19041">
+        <frameworkReference name="Microsoft.WindowsDesktop.App.WPF" />
+      </group>
+      <group targetFramework="net8.0-windows7.0">
+        <frameworkReference name="Microsoft.WindowsDesktop.App.WPF" />
+      </group>
+      <group targetFramework="net8.0-windows10.0.19041">
+        <frameworkReference name="Microsoft.WindowsDesktop.App.WPF" />
+      </group>
+      <group targetFramework=".NETFramework4.6.2" />
+    </frameworkReferences>
+  </metadata>
+</package>

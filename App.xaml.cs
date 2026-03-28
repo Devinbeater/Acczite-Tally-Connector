@@ -23,6 +23,7 @@ using Microsoft.Extensions.Configuration;
 using System.Net.Http;
 using Acczite20.Services.Authentication;
 using Acczite20.Services.Tally;
+using System.Runtime.InteropServices;
 
 namespace Acczite20
 {
@@ -118,6 +119,10 @@ namespace Acczite20
             });
 
             services.AddSingleton<MongoService>();
+            services.AddSingleton<IMongoProjector, MongoProjector>();
+            services.AddScoped<ISyncMetadataService, SyncMetadataService>();
+            services.AddScoped<IMasterRepository, MasterRepository>();
+            services.AddScoped<DeadLetterReplayService>();
 
             // View Models / Pages
             services.AddSingleton<MainWindow>();
@@ -189,9 +194,10 @@ namespace Acczite20
             services.AddSingleton<TallyXmlParser>();
             services.AddSingleton<SyncStateMonitor>();
             services.AddSingleton<TallyOdbcImporter>();
-            services.AddSingleton<TallyMasterSyncService>();
+            services.AddScoped<TallyMasterSyncService>();
             services.AddSingleton<ISyncLockProvider, LocalSyncLockProvider>();
-            services.AddSingleton<TallySyncOrchestrator>();
+            services.AddSingleton<ISyncControlService, SyncControlService>();
+            services.AddScoped<TallySyncOrchestrator>();
             services.AddScoped<Acczite20.Infrastructure.MasterDataCache>();
             services.AddScoped<Acczite20.Infrastructure.BulkInsertHandler>();
             services.AddScoped<Acczite20.Services.Sync.LedgerSnapshotService>();
@@ -291,6 +297,7 @@ namespace Acczite20
         protected override void OnStartup(StartupEventArgs e)
         {
             LogBreadcrumb("OnStartup started");
+            try { SetCurrentProcessExplicitAppUserModelID("Acczite.Enterprise.SyncHub.20"); } catch { }
             base.OnStartup(e);
             ModernWpf.ThemeManager.Current.ApplicationTheme = ModernWpf.ApplicationTheme.Light;
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -329,6 +336,11 @@ namespace Acczite20
                     // Start Background Sync
                     var syncService = ServiceProvider.GetRequiredService<TallySyncHostedService>();
                     _ = syncService.StartAsync(CancellationToken.None);
+
+                    // Start Mongo Projector Loops (Consumption + Fallback Drainer)
+                    var projector = ServiceProvider.GetRequiredService<IMongoProjector>();
+                    _ = projector.ProcessQueueAsync(CancellationToken.None);
+                    _ = projector.DrainFallbackQueueAsync(CancellationToken.None);
                 }
                 else
                 {
@@ -413,5 +425,8 @@ namespace Acczite20
             }
             catch { }
         }
+
+        [DllImport("shell32.dll", SetLastError = true)]
+        private static extern int SetCurrentProcessExplicitAppUserModelID([MarshalAs(UnmanagedType.LPWStr)] string appId);
     }
 }

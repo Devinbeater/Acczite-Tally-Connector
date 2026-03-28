@@ -18,14 +18,14 @@ namespace Acczite20.Services.Sync
         // fires before the current one finishes, stacking requests into Tally.
         private readonly TimeSpan _syncInterval = TimeSpan.FromMinutes(5);
 
-        // Prevents re-entrant sync cycles if a previous run is still in progress.
-        private volatile bool _syncInProgress;
+        private readonly ISyncControlService _control;
 
-        public TallySyncHostedService(ILogger<TallySyncHostedService> logger, IServiceScopeFactory scopeFactory, SyncStateMonitor stateMonitor)
+        public TallySyncHostedService(ILogger<TallySyncHostedService> logger, IServiceScopeFactory scopeFactory, SyncStateMonitor stateMonitor, ISyncControlService control)
         {
             _logger = logger;
             _scopeFactory = scopeFactory;
             _stateMonitor = stateMonitor;
+            _control = control;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -34,7 +34,9 @@ namespace Acczite20.Services.Sync
             _stateMonitor.AddLog("Tally Sync Background Service starting.", "INFO");
 
             // Wait until session is properly configured before first sync.
-            while (SessionManager.Instance.OrganizationId == Guid.Empty)
+            // Support both SQL (Guid) and MongoDB (ObjectId/string) contexts.
+            while (SessionManager.Instance.OrganizationId == Guid.Empty && 
+                   string.IsNullOrEmpty(SessionManager.Instance.OrganizationObjectId))
             {
                 await Task.Delay(2000, stoppingToken);
             }
@@ -45,13 +47,17 @@ namespace Acczite20.Services.Sync
 
             while (!stoppingToken.IsCancellationRequested)
             {
-                if (_syncInProgress)
+                var orgs = new[] { SessionManager.Instance.OrganizationId }; // Future: Get all active orgs
+                foreach (var orgId in orgs)
                 {
-                    _stateMonitor.AddLog("⏭ Skipping sync cycle — previous cycle still in progress.", "DEBUG");
-                }
-                else
-                {
-                    _syncInProgress = true;
+                    if (orgId == Guid.Empty) continue;
+
+                    var started = _control.TryStart(orgId, SyncOwner.HostedService);
+                    if (!started)
+                    {
+                        continue; // someone else owns it (manual)
+                    }
+
                     try
                     {
                         var msg = "Starting background sync cycle...";
@@ -67,16 +73,17 @@ namespace Acczite20.Services.Sync
                     }
                     catch (OperationCanceledException)
                     {
-                        break;
+                        // expected
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Sync failure");
-                        _stateMonitor.AddLog($"Sync failure: {ex.Message}", "ERROR");
+                        _logger.LogError(ex, "Background sync failed");
                     }
                     finally
                     {
-                        _syncInProgress = false;
+                        var state = _control.GetState(orgId);
+                        state.Status = SyncLifecycle.Idle;
+                        state.Owner = SyncOwner.None;
                     }
                 }
 
@@ -85,6 +92,15 @@ namespace Acczite20.Services.Sync
 
             _logger.LogInformation("Tally Sync Background Service stopping.");
             _stateMonitor.AddLog("Tally Sync Background Service stopping.", "INFO");
+
+            // Edge Case: App shutdown during sync
+            // Prevent orphan threads
+            var shutdownOrgs = new[] { SessionManager.Instance.OrganizationId };
+            foreach (var org in shutdownOrgs)
+            {
+                if (org != Guid.Empty)
+                    _control.CancelSync(org);
+            }
         }
     }
 }

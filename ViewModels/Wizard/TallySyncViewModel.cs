@@ -82,6 +82,13 @@ namespace Acczite20.ViewModels.Wizard
         public async Task LoadCollectionsFromTallyAsync(bool skipCompanyFetch = false)
         {
             IsLoading = true;
+            var previousSelections = TallyFields
+                .Where(item => item.IsSelected && !string.IsNullOrWhiteSpace(item.Name))
+                .OrderBy(item => item.SequenceNumber)
+                .ThenBy(item => item.Name)
+                .Select((item, index) => new { item.Name, Order = index + 1 })
+                .ToDictionary(x => x.Name!, x => x.Order, StringComparer.OrdinalIgnoreCase);
+
             TallyFields.Clear();
             if (!skipCompanyFetch) Companies.Clear();
 
@@ -154,6 +161,13 @@ namespace Acczite20.ViewModels.Wizard
                 foreach (var col in collections)
                 {
                     var item = new SelectableItem { Name = col };
+
+                    if (previousSelections.TryGetValue(col, out var sequence))
+                    {
+                        item.IsSelected = true;
+                        item.SequenceNumber = sequence;
+                    }
+
                     TallyFields.Add(item);
                     
                     // Fire-and-forget count loading for each item
@@ -165,6 +179,7 @@ namespace Acczite20.ViewModels.Wizard
                     });
                 }
 
+                RecomputeSelectionSequence();
                 StatusMessage = $"Found {collections.Count} available collections from Tally.";
             }
             catch (Exception ex)
@@ -193,6 +208,20 @@ namespace Acczite20.ViewModels.Wizard
                 .OrderBy(f => f.SequenceNumber)
                 .Select(f => f.Name ?? string.Empty)
                 .ToList();
+        }
+
+        private void RecomputeSelectionSequence()
+        {
+            int sequence = 1;
+            foreach (var item in TallyFields.Where(f => f.IsSelected).OrderBy(f => f.SequenceNumber == 0 ? int.MaxValue : f.SequenceNumber))
+            {
+                item.SequenceNumber = sequence++;
+            }
+
+            foreach (var item in TallyFields.Where(f => !f.IsSelected))
+            {
+                item.SequenceNumber = 0;
+            }
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
