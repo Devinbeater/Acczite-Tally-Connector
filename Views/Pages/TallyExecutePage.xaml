@@ -226,6 +226,19 @@
                                             </ComboBox>
                                         </StackPanel>
                                     </StackPanel>
+
+                                    <!-- Continuous Sync Toggle -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                                        <ui:ToggleSwitch x:Name="ContinuousSyncToggle" 
+                                                       Header="Continuous Background Sync" 
+                                                       OffContent="Disabled" 
+                                                       OnContent="Enabled"
+                                                       Toggled="ContinuousSyncToggle_Toggled"
+                                                       ui:ControlHelper.CornerRadius="4"/>
+                                        <TextBlock Text="Syncs every 5 minutes automatically." 
+                                                   VerticalAlignment="Bottom" Margin="12,0,0,8" 
+                                                   FontSize="11" Foreground="#64748B" FontStyle="Italic"/>
+                                    </StackPanel>
                                 </StackPanel>
 
                                 <!-- Action Section -->

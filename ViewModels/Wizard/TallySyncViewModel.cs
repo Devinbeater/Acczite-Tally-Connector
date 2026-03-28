@@ -150,10 +150,19 @@ namespace Acczite20.ViewModels.Wizard
                     return;
                 }
 
-                // 3. Populate the selectable list
+                // 3. Populate the selectable list with counts
                 foreach (var col in collections)
                 {
-                    TallyFields.Add(new SelectableItem { Name = col });
+                    var item = new SelectableItem { Name = col };
+                    TallyFields.Add(item);
+                    
+                    // Fire-and-forget count loading for each item
+                    _ = Task.Run(async () => {
+                        try {
+                            int count = await _tallyService.GetCollectionCountAsync(col);
+                            item.Count = count;
+                        } catch { }
+                    });
                 }
 
                 StatusMessage = $"Found {collections.Count} available collections from Tally.";

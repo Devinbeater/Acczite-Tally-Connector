@@ -17,6 +17,13 @@ namespace Acczite20.Models
         public DateTimeOffset LastModified { get; set; }
         public string? LastVoucherNumber { get; set; }
         public string? LastVoucherMasterId { get; set; }
+        public string? LastAlterId { get; set; }
+        public int LastVoucherCount { get; set; }
+        public decimal LastSumDebit { get; set; }
+        public decimal LastSumCredit { get; set; }
+        public int LastLedgerCount { get; set; }
+        public string? LedgerHash { get; set; }
+        public int SyncSchemaVersion { get; set; }
 
         // ── Crash Recovery & Health ──
         public DateTimeOffset? LastSuccessfulSync { get; set; }

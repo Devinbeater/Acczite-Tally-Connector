@@ -74,14 +74,16 @@ namespace Acczite20
 
             services.AddSingleton<IMongoClient>(sp =>
             {
-                string mongoUri = "";
-                if (System.IO.File.Exists("dbconfig.json")) 
+                // Default to localhost — MongoClient is lazy, won't error if Mongo isn't running.
+                // Empty string would throw MongoConfigurationException on construction (breaks MySQL-only users).
+                string mongoUri = "mongodb://root:wcOxy2nU4OZXA6Ze5RFp03NSL4bifE7VBRe2AkYLC2zq50olDxW8tqxErINBY9go@72.62.74.72:27017/test?authSource=admin";
+                if (System.IO.File.Exists("dbconfig.json"))
                 {
-                    try 
+                    try
                     {
                         var json = System.IO.File.ReadAllText("dbconfig.json");
                         var config = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json);
-                        if (config != null && config.TryGetValue("MongoUri", out string? uri)) 
+                        if (config != null && config.TryGetValue("MongoUri", out string? uri) && !string.IsNullOrWhiteSpace(uri))
                         {
                             mongoUri = uri;
                         }
@@ -155,6 +157,7 @@ namespace Acczite20
             services.AddTransient<RiskMonitorPage>();
             services.AddTransient<ComparativePandLPage>();
             services.AddTransient<AnomalyDetectionPage>();
+            services.AddTransient<DaybookPage>();
 
             // Business Logic Services
             services.AddTransient<DashboardService>();

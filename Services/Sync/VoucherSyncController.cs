@@ -107,6 +107,17 @@ namespace Acczite20.Services.Sync
                     await Task.Delay(500, ct);
                 }
 
+                // ── Preventive Memory Backoff ───────────────────────────────────
+                var currentProcess = System.Diagnostics.Process.GetCurrentProcess();
+                var memoryMb = currentProcess.PrivateMemorySize64 / 1024 / 1024;
+                if (memoryMb > 400)
+                {
+                    _syncMonitor.AddLog($"⚠️ [PREVENTIVE] High memory ({memoryMb} MB). Throttling batch size and cooling down...", "WARNING", "THROTTLE");
+                    _scheduler.ReduceVoucherCapAndWindow(); // Preventively thin the next batch
+                    await Task.Delay(2000, ct); // Brief cooldown
+                    if (memoryMb > 480) GC.Collect(); // Force GC if dangerously close
+                }
+
                 // Build the chunk boundary from the scheduler's current adaptive window.
                 var chunkEnd = (current + _scheduler.CurrentWindow).AddTicks(-1);
                 if (chunkEnd > to) chunkEnd = to;
@@ -143,6 +154,8 @@ namespace Acczite20.Services.Sync
                             metrics.RejectedCount++;
                             continue;
                         }
+
+                        if (prepared.AlterId > metrics.MaxAlterId) metrics.MaxAlterId = prepared.AlterId;
 
                         await channel.Writer.WriteAsync(prepared, ct);
                         metrics.EnqueuedCount++;

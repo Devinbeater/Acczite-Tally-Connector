@@ -16,6 +16,8 @@ namespace Acczite20.Services.Explorer
         public DateTimeOffset Date { get; set; }
         public string Narration { get; set; } = string.Empty;
         public decimal Amount { get; set; }
+        public string VoucherTypeName { get; set; } = string.Empty;
+        public string PartyLedgerName { get; set; } = string.Empty;
     }
 
     public class VoucherDetailDto
@@ -77,7 +79,9 @@ namespace Acczite20.Services.Explorer
                 VoucherNumber = doc.GetValue("voucherNumber", doc.GetValue("voucherNo", "—")).AsString,
                 Date = doc.GetValue("date").ToUniversalTime(),
                 Narration = doc.GetValue("narration", "").AsString,
-                Amount = doc.GetValue("totalAmount", 0).ToDecimal()
+                Amount = doc.GetValue("totalAmount", 0).ToDecimal(),
+                VoucherTypeName = doc.GetValue("voucherTypeName", "").AsString,
+                PartyLedgerName = doc.GetValue("partyLedgerName", doc.GetValue("ledgerName", "—")).AsString
             }).ToList();
         }
 

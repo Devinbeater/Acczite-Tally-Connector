@@ -99,13 +99,45 @@
 				</Setter>
 				<Style.Triggers>
 					<Trigger Property="IsMouseOver" Value="True">
-						<Setter Property="Background" Value="#BBEBEF"/>
+						<Setter Property="Background" Value="#14B8A6"/>
 					</Trigger>
 					<Trigger Property="IsPressed" Value="True">
 						<Setter Property="Opacity" Value="0.85"/>
 					</Trigger>
 				</Style.Triggers>
 			</Style>
+
+            <!-- Ghost Button Style (Modern Transparent) -->
+            <Style x:Key="GhostButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Foreground" Value="{StaticResource CharcoalText}"/>
+                <Setter Property="BorderBrush" Value="#D1D5DB"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Padding" Value="16,8"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="FontSize" Value="14"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="6">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="#F3F4F6"/>
+                        <Setter Property="BorderBrush" Value="{StaticResource PrimaryTeal}"/>
+                        <Setter Property="Foreground" Value="{StaticResource PrimaryTeal}"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
 
 			<!-- Shadow Effect for Cards -->
 			<DropShadowEffect x:Key="CardShadow"

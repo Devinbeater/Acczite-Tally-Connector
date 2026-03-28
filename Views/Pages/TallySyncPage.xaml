@@ -248,9 +248,9 @@
                                     <TextBlock Grid.Column="1" Text="{Binding Name}" 
                                                FontSize="13" FontWeight="SemiBold" 
                                                VerticalAlignment="Center" Foreground="{StaticResource CharcoalText}"/>
-                                    <TextBlock Grid.Column="2" Text="{Binding SequenceNumber}" 
+                                    <TextBlock Grid.Column="2" Text="{Binding Count}" 
                                                FontSize="12" FontWeight="Bold" VerticalAlignment="Center"
-                                               Foreground="{StaticResource PrimaryTeal}" Width="20" TextAlignment="Right"/>
+                                               Foreground="{StaticResource PrimaryTeal}" Width="40" TextAlignment="Right"/>
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>

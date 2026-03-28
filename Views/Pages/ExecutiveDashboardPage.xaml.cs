@@ -30,7 +30,7 @@ namespace Acczite20.Views.Pages
             _timer = new System.Windows.Threading.DispatcherTimer();
             _timer.Interval = TimeSpan.FromSeconds(30);
             _timer.Tick += async (s, e) => {
-                TxtClock.Text = DateTime.Now.ToString("dddd, dd MMMM yyyy • hh:mm tt");
+                TxtClock.Text = DateTime.Now.ToString("dddd, dd MMMM yyyy • hh:mm:ss tt");
                 await RefreshDataAsync();
             };
             _timer.Start();
@@ -80,6 +80,8 @@ namespace Acczite20.Views.Pages
                 TxtPayables.Text = $"₹ {_lastStats.TotalPayables:N2}";
                 
                 AlertsList.ItemsSource = _lastStats.Alerts;
+                EmptyAlertsPlaceholder.Visibility = (_lastStats.Alerts == null || _lastStats.Alerts.Count == 0) 
+                    ? Visibility.Visible : Visibility.Collapsed;
             }
             catch (Exception ex)
             {

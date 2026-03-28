@@ -4,26 +4,21 @@
     <VERSION>1</VERSION>
     <TALLYREQUEST>Export</TALLYREQUEST>
     <TYPE>Collection</TYPE>
-    <ID>AccziteLedgerHeaders</ID>
+    <ID>AccziteOpenCompanies</ID>
   </HEADER>
   <BODY>
     <DESC>
-        
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <SVFROMDATE>20210325</SVFROMDATE><SVTODATE>20260325</SVTODATE>
-        <SVCURRENTCOMPANY>Vaibhav</SVCURRENTCOMPANY>
-        
       </STATICVARIABLES>
-        
-<TDL>
-  <TDLMESSAGE>
-    <COLLECTION NAME="AccziteLedgerHeaders" ISMODIFY="No">
-      <TYPE>Ledger</TYPE>
-      <FETCH>MASTERID, NAME, PARENT, OPENINGBALANCE</FETCH>
-    </COLLECTION>
-  </TDLMESSAGE>
-</TDL>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME="AccziteOpenCompanies" ISMODIFY="No">
+            <TYPE>Company</TYPE>
+            <FETCH>NAME, GUID</FETCH>
+          </COLLECTION>
+        </TDLMESSAGE>
+      </TDL>
     </DESC>
   </BODY>
 </ENVELOPE>

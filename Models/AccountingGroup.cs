@@ -30,5 +30,11 @@ namespace Acczite20.Models
         public bool IsAddable { get; set; }
 
         public string TallyMasterId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Group-level closing balance fetched from Tally.
+        /// Used for Balance Sheet (Assets/Liabilities) and P&amp;L (Income/Expenditure) reporting.
+        /// </summary>
+        public decimal ClosingBalance { get; set; }
     }
 }

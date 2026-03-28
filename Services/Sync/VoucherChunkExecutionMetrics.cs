@@ -10,5 +10,6 @@ namespace Acczite20.Services.Sync
         public TimeSpan Elapsed { get; set; }
         public long PayloadBytes { get; set; }
         public TimeSpan WindowUsed { get; set; }
+        public int MaxAlterId { get; set; }
     }
 }

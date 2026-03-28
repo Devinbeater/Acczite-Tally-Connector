@@ -13,7 +13,15 @@ namespace Acczite20.Models
         public string StockGroup { get; set; } = string.Empty;
 
         public decimal OpeningBalance { get; set; }
+
+        /// <summary>Closing stock quantity (as reported by Tally).</summary>
         public decimal ClosingBalance { get; set; }
+
+        /// <summary>Closing rate per unit (for Stock Summary valuation).</summary>
+        public decimal ClosingRate { get; set; }
+
+        /// <summary>Closing stock value = ClosingBalance × ClosingRate.</summary>
+        public decimal ClosingValue { get; set; }
 
         public string Description { get; set; } = string.Empty;
         public string BaseUnit { get; set; } = string.Empty;

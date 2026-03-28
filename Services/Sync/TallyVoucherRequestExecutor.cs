@@ -95,10 +95,23 @@ namespace Acczite20.Services.Sync
 
                     var voucher = _xmlParser.ParseVoucherHeader(element, orgId, companyId);
                     if (voucher != null && !string.IsNullOrEmpty(voucher.TallyMasterId))
+                    {
                         headers[voucher.TallyMasterId] = voucher;
+                    }
                     else
+                    {
                         metrics.RejectedCount++;
+                    }
                 }
+            }
+
+            if (headers.Count == 0)
+            {
+                _syncMonitor.AddLog($"🔍 Discovery: 0 vouchers found for range {range.Start:yyyy-MM-dd} to {range.End:yyyy-MM-dd}. Tally may have no data for these dates.", "WARNING", "VOUCHERS");
+            }
+            else
+            {
+                _syncMonitor.AddLog($"✅ Discovery: {headers.Count} voucher headers resolved for {range.Start:yyyy-MM-dd}.", "DEBUG", "VOUCHERS");
             }
 
             // Empty chunk — nothing to do; let the scheduler grow the window.
@@ -106,6 +119,12 @@ namespace Acczite20.Services.Sync
             {
                 sw.Stop();
                 metrics.Elapsed = sw.Elapsed;
+                _syncMonitor.AddLog(
+                    $"[PASS1] 0 vouchers returned by Tally for {range.Start:yyyyMMdd}→{range.End:yyyyMMdd} ({sw.Elapsed.TotalSeconds:0.#}s). " +
+                    $"Check: (1) company name in Tally matches '{SessionManager.Instance.TallyCompanyName}', " +
+                    $"(2) Tally has vouchers between those dates, " +
+                    $"(3) see tally_request_stream.xml for exact XML sent.",
+                    "WARNING", "DIAG");
                 _scheduler.Adjust(metrics.Elapsed, 0, headerBytes, failed: false, isSafeMode: _syncMonitor.SyncMode == "Safe");
                 yield break;
             }

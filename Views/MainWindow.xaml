@@ -28,6 +28,7 @@
                     
                     <TextBlock Text="EXPLORE" Foreground="{StaticResource CharcoalText}" FontSize="12" FontWeight="Bold" Margin="24,20,0,10" Opacity="0.5"/>
                     <Button x:Name="NavVoucherButton" Style="{StaticResource SidebarButtonStyle}" Content="🔍 Voucher Explorer" Click="NavVoucherExplorer_Click"/>
+                    <Button x:Name="NavDaybookButton" Style="{StaticResource SidebarButtonStyle}" Content="📖 Daybook" Click="NavDaybook_Click"/>
                     <Button x:Name="NavLedgerButton" Style="{StaticResource SidebarButtonStyle}" Content="📔 Ledger Explorer" Click="NavLedgerExplorer_Click"/>
                     <Button x:Name="NavTrialBalanceButton" Style="{StaticResource SidebarButtonStyle}" Content="⚖️ Trial Balance" Click="NavTrialBalance_Click"/>
                     <Button x:Name="NavPandLButton" Style="{StaticResource SidebarButtonStyle}" Content="📈 Profit &amp; Loss" Click="NavPandL_Click"/>

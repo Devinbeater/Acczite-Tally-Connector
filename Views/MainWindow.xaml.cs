@@ -315,6 +315,7 @@ namespace Acczite20.Views
             // Financial Explorers (Accountant & Admin)
             Visibility financialVisibility = (isAdmin || isAccountant) ? Visibility.Visible : Visibility.Collapsed;
             NavVoucherButton.Visibility = financialVisibility;
+            NavDaybookButton.Visibility = financialVisibility;
             NavLedgerButton.Visibility = financialVisibility;
             NavTrialBalanceButton.Visibility = financialVisibility;
             NavPandLButton.Visibility = financialVisibility;
@@ -340,6 +341,7 @@ namespace Acczite20.Views
         private void NavDashboard_Click(object sender, RoutedEventArgs e) => NavigateTo<DashboardPage>("Dashboard");
         private void NavTimeline_Click(object sender, RoutedEventArgs e) => NavigateTo<TimelinePage>("Unified Global Timeline");
         private void NavVoucherExplorer_Click(object sender, RoutedEventArgs e) => NavigateTo<VoucherExplorerPage>("Voucher Explorer");
+        private void NavDaybook_Click(object sender, RoutedEventArgs e) => NavigateTo<DaybookPage>("Daybook");
         private void NavLedgerExplorer_Click(object sender, RoutedEventArgs e) => NavigateTo<LedgerExplorerPage>("Ledger Explorer");
         private void NavTrialBalance_Click(object sender, RoutedEventArgs e) => NavigateTo<TrialBalancePage>("Trial Balance");
         private void NavPandL_Click(object sender, RoutedEventArgs e) => NavigateTo<ProfitAndLossPage>("Profit & Loss Account");

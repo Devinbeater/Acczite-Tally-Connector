@@ -102,7 +102,7 @@ namespace Acczite20.Views
 
             if (string.IsNullOrWhiteSpace(loginId) || string.IsNullOrWhiteSpace(password))
             {
-                MessageBox.Show("Please enter both Login ID and Password.", "Input Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+                await CustomDialog.ShowAsync("Input Required", "Please enter both Email/Phone and Password.", CustomDialog.DialogType.Warning);
                 return;
             }
 
@@ -123,13 +123,13 @@ namespace Acczite20.Views
                 }
                 else
                 {
-                    MessageBox.Show($"Invalid credentials or server error. Please try again.\n\nMake sure the backend is accessible at {serviceProvider.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()["ApiBaseUrl"] ?? "https://api.acczite.in"}.", "Login Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                    await CustomDialog.ShowAsync("Login Failed", $"Invalid credentials or server error. Please try again.\n\nMake sure the backend is accessible at {serviceProvider.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()["ApiBaseUrl"] ?? "https://api.acczite.in"}.", CustomDialog.DialogType.Error);
                 }
             }
             catch (Exception ex)
             {
                 var serviceProvider = ((App)Application.Current).ServiceProvider;
-                MessageBox.Show($"Error during login: {ex.Message}\n\nMake sure the backend is accessible at {serviceProvider.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()["ApiBaseUrl"] ?? "https://api.acczite.in"}.", "System Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                await CustomDialog.ShowAsync("System Error", $"Error during login: {ex.Message}\n\nMake sure the backend is accessible at {serviceProvider.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()["ApiBaseUrl"] ?? "https://api.acczite.in"}.", CustomDialog.DialogType.Error);
             }
             finally
             {
@@ -158,6 +158,11 @@ namespace Acczite20.Views
             catch
             {
             }
+        }
+        private void Window_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (e.ChangedButton == System.Windows.Input.MouseButton.Left)
+                DragMove();
         }
     }
 }

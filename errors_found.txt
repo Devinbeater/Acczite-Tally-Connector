@@ -1,0 +1,12 @@
+
+     2>C:\vaibhav\tallyAccz
+ite\Views\Pages\ExecutiveDa
+shboardPage.xaml.cs(83,17):
+ error CS0103: The name 
+'EmptyAlertsPlaceholder' 
+does not exist in the 
+current context [C:\vaibhav
+\tallyAcczite\Acczite20_nua
+e11n4_wpftmp.csproj]
+
+

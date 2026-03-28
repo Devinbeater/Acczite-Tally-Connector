@@ -1121,3 +1121,605 @@
 [16:25:25.700] TRACE: InventoryExplorerPage: Loading data. DB=MongoDB, SQLOrg=00000000-0000-0000-0000-000000000000, MongoOrg=69522c6c9abe0689722835e6
 [16:25:26.376] TRACE: InventoryExplorerPage: Mongo Collections: beats, dealercustomers, gatepassconfigs, transactions, gymproducts, societycleanerassignments, suppliertransferorders, supplierintransitstocks, supplierwarehousemanagers, quickaddproducts, rawmaterialauditlogs, finalproductbatches, supplierwarehouses, tasks, leaves, productionissues, orderitems, alerts, challenges, cameras, constructionGRN, packlists, transportlots, letters, returns, trainersessions, fuellogs, supplierinventories, sipper_contract_templates, constructionassets, hsesensors, trackingevents, departments, employees, sipper_customers, putawaytasks, cyclecounts, staffperformances, cylinderrefillrequests, chatmessages, transportautomationconfigs, dispatchmanifests, societystaffattendances, tradesupervisors, slmcustomers, approvalworkflows, womenhealths, projectmilestones, transportdriverlocationhistories, equipment, financialauditlogs, tradeoutwards, warehouse_assignments, knowledgebases, supplierpackingtasks, constructionadmintenders, cpdpexecutives, calibrations, productionreports, workershiftassignments, labourmusters, tadaclaims, agreementtemplates, grns, exchangerates, travellogs, constructioncrusheroperations, constructionaccountingrules, sipper_machine_product_overrides, gymmembers, transportroutes, supplyrequests, sessionrequests, constructionMaterialTransaction, manufacturingshifts, accountinggroups, constructionEquipmentMaintenance, workouttemplates, companyproducts, trackingsessions, gymnutritionistfoods, dealers, workouts, realestatetasks, discounts, constructionprojects, candidates, productionorders, roles, poscoupons, traineractivities, amc_onboarding_requests, leadmanagementcustomers, dailywageworkers, sipper_complaints, adminprojects, generalsettings, societyvisitorlogs, exercises, inventorylogs, groups, tickets, deals, amccontracttemplates, tdsrecords, purchaseddomains, presentationallocations, accounts, constructionEquipmentFuelLog, producttestspecifications, societycomplaints, suppliertransferdocuments, employeeloans, transportstaffs, constructiondrawinglayouts, resetPasswordAuditlog, members, constructionEquipmentBreakdown, nutrareceptionists, logistics_vehicles, suppliercyclecounts, packingtasks, outboundorders, employeelocationhistories, replenishmenttasks, visitoutcomes, bodymetrics, constructionequipment, transportattendances, dealerinvoices, supplierpicklists, proofofdeliveries, membershipplans, constructiongrn, emailtemplates, userintegrations, drivershifts, emailaccounts, prodmanagerinventoryitems, mrleads, notifications, wagecalculations, employee_vehicles, employeesalaries, materialissues, constructionEquipment, materialallocations, billofmaterials, transportbookings, materials, societyevents, chatrooms, staffattendances, qapassproducts, workersessions, chatmessage_v3, supplierstaffs, inventorytransactions, settlements, schemes, putawayrules, supplierpickers, supplierpackers, otherexpenses, companypolicies, sipper_order_items, tradebidders, societyfloors, manufacturertasks, labours, tradesalecontracts, vendors, realestatesellers, workallocations, constructionmaterialtransactions, gyms, cylinderdriverlocations, constructionprojectmanagers, sipper_products, activitylogs, supplierstockaudittrails, amc_daily_logs, transportmanifests, creditnotes, wavepicks, stabilitystudies, sipper_order_sessions, transporttrips, realestatesettings, groupleaders, dispatchstagings, advertisements, goodsreceiptnotes, mrtasks, completedworkouts, designations, presentations, constructionaccounts, pipelines, societybills, gymnutritionistfooddiaries, creditrules, dealerreturns, tradedispatches, emails, constructiontenders, fiscalperiods, posproducts, prodmanagerscraprecords, supplierdailyclosingchecklists, posbusinesssettings, capas, slmstaffs, cylinderprices, societystaffwingassignments, societyemergencyalerts, constructionprojectplans, supplierwarehouseclosures, accountgroups, barberbookings, posrecentsales, constructionsupervisorlabours, constructionexpenses, oosinvestigations, terminations, transportriders, attendances, bills, supplierpackingdetails, equipmentmaintenances, societymemberpayments, constructionmanagers, tradecontracts, sipper_machines, trainerattendances, conversations, slapolicies, tradeadminfarmers, crusheroperations, worktasks, employeeinvites, externallogs, turfownerturves, quotations, nutratrainers, tradegodowns, transportvehicles, hr_employees, constructionmachinelogs, gymplans, categories, transportexceptions, barcodes, wbstasks, jobs, societycleanerattendances, authorities, organizationinvites, constructionmaterials, sipper_staffs, womenhealthresources, notaries, servicelifecyclerequests, supplier_materials, field_orders, societynotices, constructionprocurements, amcsignatories, cylinderinventories, drafts, realestatechannelpartners, domaintransactions, organizations, translations, supplierbatches, healthtrackings, dealerpayments, calls, orderaudits, workoutprograms, inventory, amc_categories, payments, documents, gymsettings, ledgers, slideviewlogs, warehousebins, labour, warehouseinventories, servicelifecyclejobcards, supplierquotations, poscustomers, locationpoints, auditlogs, gymmeal, transportstopevents, dealertickets, presentationsessions, vehicles, supplierinterwarehousetransfers, leadmanagementquotations, amc_subscriptions, constructioncontracts, tadas, leadtypes, gymmemberorders, teams, warehousepackingtasks, travelroutes, products, packings, barbersettings, clauses, developerbrokerinquiries, travelrequests, tradeformulas, gymmembercarts, constructionattendances, hrs, loans, supplierreports, counters, inventorymovements, transportriderlocationhistories, paymentorders, supplierpickingtasks, visitlogs, payrolls, servicelifecycleinvoices, fleets, realestateauditlogs, stores, amc_complaints, supplierqcinspectors, hrtasks, memberships, dealercreditledgers, paymentintimations, returnrequests, picklists, gympayments, supplierfleetmanagers, supplierdrivers, messages, appsuppliers, sipper_maintenance_tasks, posts, constructionsiteinventories, contacts, realestatecommissions, loanconfigurations, societymembers, files, orders, machines, constructionequipments, mealplans, workcenters, barberroles, servicelifecyclesettings, orderissues, supervisorlabours, streamlogs, meals, productsimples, societycleaningtasks, tripplans, societyflats, turfowners, manufacturingissues, shifts, realestatedeals, announcements, suppliersafetyaudits, users, tradeparties, sipper_machine_types, amc_service_jobs, teamhierarchies, customers, supplierqualitychecks, suppliervehicles, sales, shipments, contractors, supplierorders, pods, connections, journals, transportusers, commissions, adminorders, ordertimelines, offerletters, amc_service_plans, labourdailylogs, manufacturer, projects, companysettings, rsaprofiles, materialrequests, constructionadmintendercompetitors, properties, leads, amc_service_items, chatmessage_v2, transportmetrics, mesactivitylogs, transportdrivers, amccontracts, gymattendances, cylinderpayments, trips, barbercustomers, supplierequipmenttrackings, lettertemplates, constructionMaterials, storagelocations, constructionSiteInventory, routeplans, checkpoints, classattendances, deviations, supplierpayments, supportcustomers, tradefarmers, transportscanevents, customreports, warehouseexceptions, authorizedsignatories, barberinvoices, webhooksubscriptions, finalproducts, trainermembers, supplierwarehousestaffs, complaints, offices, invoices, constructiontasks, admininventories, machinelogs, accountinginvoices, custom_fields, routelegs, constructionlabours, leadcustomers, offboardings, societyparcels, parcels, jobpostings, boards, fooddiaries, warehousestaff, constructionworkforces, listings, init_collection, supplierqctasks, goals, societymembermovements, cylinderorders, presentationimages, financialperiods, amc_products, warehouseputawaytasks, logisticsinventories, memberprofiles, apiintegrations, cameraaccesses, posbills, constructionaccountgroups, constructionEquipmentCostLog, automations, personalrecords, custom_field_values, billings, nutramembers, activities, mesmaterialrequests, constructiontransporttrips, foods, warehousepickingtasks, supplierstaffattendances, supplierinvoices, servicelifecyclereceipts, servicelifecycleestimates, supplymaterials, loanrequests, inventoryadjustments, paymentrequests, dealerorders, inboundshipments, gymworkoutplans, posdiscounts, constructiondailyreports, realestatebuyers, audiences, targets, tradeinwards, posreturns, realestatebrokers, productionordertemplates, amcschedules, constructionexecutionsites, batches, prodmanagerinventorylocations, inquiries, gymclasses, mrbudgets, telemetryevents, supplierinbounddeliveries, suppliertomorrowplannings, servicecategories, events, vouchersequences, classbookings, gymequipments, services, dealer_orders, transportsequences, warehouses, amcservices, admins, cpdppoints, gpstrackings, societymaintenancecomponents, sipper_orders, barberservices, environmentalmonitorings, suppliers, coupons, qualitybatches, employeedocuments, tadapolicies, realestatedevelopers, domains, gymfood, inventories, rawmaterials, pickingtasks, societywings, transportsettings, nutrition_history, constructionfuellogs, amcstaffleaves, fleetvehicles, logisticsvehicles, posterminals, warehousezones, stockalerts, customfielddefinitions, realestateleads, customfieldvalues, barberstaffs, supplierdeliverytrips, trainerstats, drivers, gymadmins, promotions, agreements, constructionMaterialMaster, realestatepayments, dashboardlayouts, servicelifecyclestatuslogs, bmirecords, nutrition_goals
 [16:25:26.890] TRACE: InventoryExplorerPage: Found 0 items in MongoDB
+[09:48:41.680] TRACE: App constructor started
+[09:48:42.072] TRACE: Registering event subscribers
+[09:48:42.074] TRACE: App constructor finished
+[09:48:42.079] TRACE: OnStartup started
+[09:48:42.081] TRACE: Showing StartupWindow
+[09:48:44.079] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[09:49:14.135] TRACE: App: No LOCAL Mongo found
+[09:49:18.050] TRACE: StartupWindow result: True
+[09:49:18.051] TRACE: Restoring session
+[09:49:18.052] TRACE: Resolving MainWindow
+[09:49:18.053] TRACE: MainWindow constructor started
+[09:49:18.120] TRACE: MainWindow constructor finished
+[09:49:18.121] TRACE: Showing MainWindow
+[09:49:18.377] TRACE: MainWindow_Loaded started
+[09:49:18.380] TRACE: Applying permissions for role: admin
+[09:49:18.388] TRACE: Loading organizations
+[09:49:18.416] TRACE: Navigating to DashboardPage
+[09:49:18.763] TRACE: MainWindow_Loaded finished
+[09:58:56.433] TRACE: App constructor started
+[09:58:56.780] TRACE: Registering event subscribers
+[09:58:56.782] TRACE: App constructor finished
+[09:58:56.787] TRACE: OnStartup started
+[09:58:56.789] TRACE: Showing StartupWindow
+[09:58:59.022] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[09:59:29.043] TRACE: App: No LOCAL Mongo found
+[09:59:30.462] TRACE: StartupWindow result: True
+[09:59:30.466] TRACE: Restoring session
+[09:59:30.467] TRACE: Resolving MainWindow
+[09:59:30.471] TRACE: MainWindow constructor started
+[09:59:30.503] TRACE: MainWindow constructor finished
+[09:59:30.504] TRACE: Showing MainWindow
+[09:59:30.696] TRACE: MainWindow_Loaded started
+[09:59:30.698] TRACE: Applying permissions for role: admin
+[09:59:30.702] TRACE: Loading organizations
+[09:59:30.717] TRACE: Navigating to DashboardPage
+[09:59:30.960] TRACE: MainWindow_Loaded finished
+[10:09:40.085] TRACE: App constructor started
+[10:09:40.523] TRACE: Registering event subscribers
+[10:09:40.526] TRACE: App constructor finished
+[10:09:40.532] TRACE: OnStartup started
+[10:09:40.535] TRACE: Showing StartupWindow
+[10:09:41.841] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[10:10:11.854] TRACE: App: No LOCAL Mongo found
+[10:10:13.853] TRACE: StartupWindow result: True
+[10:10:13.854] TRACE: Restoring session
+[10:10:13.857] TRACE: Resolving MainWindow
+[10:10:13.860] TRACE: MainWindow constructor started
+[10:10:13.920] TRACE: MainWindow constructor finished
+[10:10:13.921] TRACE: Showing MainWindow
+[10:10:14.109] TRACE: MainWindow_Loaded started
+[10:10:14.112] TRACE: Applying permissions for role: admin
+[10:10:14.116] TRACE: Loading organizations
+[10:10:14.132] TRACE: Navigating to DashboardPage
+[10:10:14.497] TRACE: MainWindow_Loaded finished
+[10:20:11.052] TRACE: App constructor started
+[10:20:11.346] TRACE: Registering event subscribers
+[10:20:11.348] TRACE: App constructor finished
+[10:20:11.352] TRACE: OnStartup started
+[10:20:11.355] TRACE: Showing StartupWindow
+[10:20:14.313] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[10:20:44.316] TRACE: App: No LOCAL Mongo found
+[10:20:46.260] TRACE: StartupWindow result: True
+[10:20:46.260] TRACE: Restoring session
+[10:20:46.261] TRACE: Resolving MainWindow
+[10:20:46.263] TRACE: MainWindow constructor started
+[10:20:46.288] TRACE: MainWindow constructor finished
+[10:20:46.289] TRACE: Showing MainWindow
+[10:20:46.446] TRACE: MainWindow_Loaded started
+[10:20:46.448] TRACE: Applying permissions for role: admin
+[10:20:46.452] TRACE: Loading organizations
+[10:20:46.467] TRACE: Navigating to DashboardPage
+[10:20:46.670] TRACE: MainWindow_Loaded finished
+[10:26:02.893] TRACE: App constructor started
+[10:26:06.254] TRACE: Registering event subscribers
+[10:26:06.256] TRACE: App constructor finished
+[10:26:06.262] TRACE: OnStartup started
+[10:26:06.265] TRACE: Showing StartupWindow
+[10:26:09.212] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[10:26:39.235] TRACE: App: No LOCAL Mongo found
+[10:26:41.511] TRACE: StartupWindow result: True
+[10:26:41.512] TRACE: Restoring session
+[10:26:41.514] TRACE: Resolving MainWindow
+[10:26:41.515] TRACE: MainWindow constructor started
+[10:26:41.557] TRACE: MainWindow constructor finished
+[10:26:41.558] TRACE: Showing MainWindow
+[10:26:41.732] TRACE: MainWindow_Loaded started
+[10:26:41.735] TRACE: Applying permissions for role: admin
+[10:26:41.738] TRACE: Loading organizations
+[10:26:41.754] TRACE: Navigating to DashboardPage
+[10:26:43.749] TRACE: MainWindow_Loaded finished
+[10:46:01.041] TRACE: App constructor started
+[10:46:04.697] TRACE: Registering event subscribers
+[10:46:04.699] TRACE: App constructor finished
+[10:46:04.706] TRACE: OnStartup started
+[10:46:04.710] TRACE: Showing StartupWindow
+[10:46:08.790] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[10:46:38.812] TRACE: App: No LOCAL Mongo found
+[10:46:40.951] TRACE: StartupWindow result: True
+[10:46:40.952] TRACE: Restoring session
+[10:46:40.954] TRACE: Resolving MainWindow
+[10:46:40.956] TRACE: MainWindow constructor started
+[10:46:40.989] TRACE: MainWindow constructor finished
+[10:46:40.990] TRACE: Showing MainWindow
+[10:46:41.173] TRACE: MainWindow_Loaded started
+[10:46:41.174] TRACE: Applying permissions for role: admin
+[10:46:41.181] TRACE: Loading organizations
+[10:46:41.205] TRACE: Navigating to DashboardPage
+[10:46:43.242] TRACE: MainWindow_Loaded finished
+[10:55:06.744] TRACE: App constructor started
+[10:55:10.524] TRACE: Registering event subscribers
+[10:55:10.526] TRACE: App constructor finished
+[10:55:10.532] TRACE: OnStartup started
+[10:55:10.535] TRACE: Showing StartupWindow
+[10:55:12.592] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[10:55:42.634] TRACE: App: No LOCAL Mongo found
+[10:55:44.885] TRACE: StartupWindow result: True
+[10:55:44.886] TRACE: Restoring session
+[10:55:44.887] TRACE: Resolving MainWindow
+[10:55:44.889] TRACE: MainWindow constructor started
+[10:55:44.928] TRACE: MainWindow constructor finished
+[10:55:44.929] TRACE: Showing MainWindow
+[10:55:45.132] TRACE: MainWindow_Loaded started
+[10:55:45.135] TRACE: Applying permissions for role: admin
+[10:55:45.138] TRACE: Loading organizations
+[10:55:45.159] TRACE: Navigating to DashboardPage
+[10:55:47.075] TRACE: MainWindow_Loaded finished
+[11:07:49.194] TRACE: App constructor started
+[11:07:52.505] TRACE: Registering event subscribers
+[11:07:52.507] TRACE: App constructor finished
+[11:07:52.512] TRACE: OnStartup started
+[11:07:52.515] TRACE: Showing StartupWindow
+[11:07:54.665] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[11:08:24.695] TRACE: App: No LOCAL Mongo found
+[11:08:27.052] TRACE: StartupWindow result: True
+[11:08:27.052] TRACE: Restoring session
+[11:08:27.054] TRACE: Resolving MainWindow
+[11:08:27.056] TRACE: MainWindow constructor started
+[11:08:27.092] TRACE: MainWindow constructor finished
+[11:08:27.093] TRACE: Showing MainWindow
+[11:08:27.286] TRACE: MainWindow_Loaded started
+[11:08:27.288] TRACE: Applying permissions for role: admin
+[11:08:27.295] TRACE: Loading organizations
+[11:08:27.314] TRACE: Navigating to DashboardPage
+[11:08:29.039] TRACE: MainWindow_Loaded finished
+[11:16:06.584] TRACE: App constructor started
+[11:16:09.831] TRACE: Registering event subscribers
+[11:16:09.833] TRACE: App constructor finished
+[11:16:09.838] TRACE: OnStartup started
+[11:16:09.842] TRACE: Showing StartupWindow
+[11:16:12.089] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[11:16:42.107] TRACE: App: No LOCAL Mongo found
+[11:16:45.460] TRACE: StartupWindow result: True
+[11:16:45.462] TRACE: Restoring session
+[11:16:45.466] TRACE: Resolving MainWindow
+[11:16:45.468] TRACE: MainWindow constructor started
+[11:16:45.528] TRACE: MainWindow constructor finished
+[11:16:45.529] TRACE: Showing MainWindow
+[11:16:45.800] TRACE: MainWindow_Loaded started
+[11:16:45.802] TRACE: Applying permissions for role: admin
+[11:16:45.813] TRACE: Loading organizations
+[11:16:45.831] TRACE: Navigating to DashboardPage
+[11:16:47.907] TRACE: MainWindow_Loaded finished
+[11:26:21.659] TRACE: App constructor started
+[11:26:25.047] TRACE: Registering event subscribers
+[11:26:25.049] TRACE: App constructor finished
+[11:26:25.055] TRACE: OnStartup started
+[11:26:25.058] TRACE: Showing StartupWindow
+[11:26:27.079] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[11:26:57.087] TRACE: App: No LOCAL Mongo found
+[11:26:59.563] TRACE: StartupWindow result: True
+[11:26:59.564] TRACE: Restoring session
+[11:26:59.565] TRACE: Resolving MainWindow
+[11:26:59.567] TRACE: MainWindow constructor started
+[11:26:59.605] TRACE: MainWindow constructor finished
+[11:26:59.607] TRACE: Showing MainWindow
+[11:26:59.891] TRACE: MainWindow_Loaded started
+[11:26:59.896] TRACE: Applying permissions for role: admin
+[11:26:59.904] TRACE: Loading organizations
+[11:26:59.933] TRACE: Navigating to DashboardPage
+[11:27:01.817] TRACE: MainWindow_Loaded finished
+[11:27:08.742] TRACE: CRASH LOGGED: UnobservedTaskException
+[11:45:27.639] TRACE: App constructor started
+[11:45:31.175] TRACE: Registering event subscribers
+[11:45:31.177] TRACE: App constructor finished
+[11:45:31.183] TRACE: OnStartup started
+[11:45:31.187] TRACE: Showing StartupWindow
+[11:45:33.322] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[11:46:03.349] TRACE: App: No LOCAL Mongo found
+[11:46:05.618] TRACE: StartupWindow result: True
+[11:46:05.618] TRACE: Restoring session
+[11:46:05.620] TRACE: Resolving MainWindow
+[11:46:05.623] TRACE: MainWindow constructor started
+[11:46:05.666] TRACE: MainWindow constructor finished
+[11:46:05.667] TRACE: Showing MainWindow
+[11:46:05.893] TRACE: MainWindow_Loaded started
+[11:46:05.894] TRACE: Applying permissions for role: admin
+[11:46:05.897] TRACE: Loading organizations
+[11:46:05.908] TRACE: Navigating to DashboardPage
+[11:46:07.766] TRACE: MainWindow_Loaded finished
+[11:57:12.030] TRACE: App constructor started
+[11:57:16.350] TRACE: Registering event subscribers
+[11:57:16.352] TRACE: App constructor finished
+[11:57:16.357] TRACE: OnStartup started
+[11:57:16.360] TRACE: Showing StartupWindow
+[11:57:17.855] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[11:57:47.878] TRACE: App: No LOCAL Mongo found
+[11:57:49.228] TRACE: StartupWindow result: True
+[11:57:49.229] TRACE: Restoring session
+[11:57:49.230] TRACE: Resolving MainWindow
+[11:57:49.232] TRACE: MainWindow constructor started
+[11:57:49.258] TRACE: MainWindow constructor finished
+[11:57:49.259] TRACE: Showing MainWindow
+[11:57:49.398] TRACE: MainWindow_Loaded started
+[11:57:49.400] TRACE: Applying permissions for role: admin
+[11:57:49.403] TRACE: Loading organizations
+[11:57:49.415] TRACE: Navigating to DashboardPage
+[11:57:51.649] TRACE: MainWindow_Loaded finished
+[12:13:07.853] TRACE: App constructor started
+[12:13:12.477] TRACE: Registering event subscribers
+[12:13:12.478] TRACE: App constructor finished
+[12:13:12.485] TRACE: OnStartup started
+[12:13:12.488] TRACE: Showing StartupWindow
+[12:13:14.107] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[12:13:44.137] TRACE: App: No LOCAL Mongo found
+[12:13:46.096] TRACE: StartupWindow result: True
+[12:13:46.097] TRACE: Restoring session
+[12:13:46.098] TRACE: Resolving MainWindow
+[12:13:46.100] TRACE: MainWindow constructor started
+[12:13:46.127] TRACE: MainWindow constructor finished
+[12:13:46.128] TRACE: Showing MainWindow
+[12:13:46.291] TRACE: MainWindow_Loaded started
+[12:13:46.294] TRACE: Applying permissions for role: admin
+[12:13:46.298] TRACE: Loading organizations
+[12:13:46.315] TRACE: Navigating to DashboardPage
+[12:13:48.367] TRACE: MainWindow_Loaded finished
+[12:33:18.806] TRACE: App constructor started
+[12:33:22.703] TRACE: Registering event subscribers
+[12:33:22.704] TRACE: App constructor finished
+[12:33:22.710] TRACE: OnStartup started
+[12:33:22.713] TRACE: Showing StartupWindow
+[12:33:24.583] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[12:33:54.610] TRACE: App: No LOCAL Mongo found
+[12:33:56.042] TRACE: StartupWindow result: True
+[12:33:56.042] TRACE: Restoring session
+[12:33:56.043] TRACE: Resolving MainWindow
+[12:33:56.045] TRACE: MainWindow constructor started
+[12:33:56.071] TRACE: MainWindow constructor finished
+[12:33:56.072] TRACE: Showing MainWindow
+[12:33:56.208] TRACE: MainWindow_Loaded started
+[12:33:56.211] TRACE: Applying permissions for role: admin
+[12:33:56.214] TRACE: Loading organizations
+[12:33:56.223] TRACE: Navigating to DashboardPage
+[12:33:58.248] TRACE: MainWindow_Loaded finished
+[12:55:16.381] TRACE: App constructor started
+[12:55:20.508] TRACE: Registering event subscribers
+[12:55:20.510] TRACE: App constructor finished
+[12:55:20.515] TRACE: OnStartup started
+[12:55:20.518] TRACE: Showing StartupWindow
+[12:55:22.582] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[12:55:52.604] TRACE: App: No LOCAL Mongo found
+[12:55:54.741] TRACE: StartupWindow result: True
+[12:55:54.741] TRACE: Restoring session
+[12:55:54.743] TRACE: Resolving MainWindow
+[12:55:54.745] TRACE: MainWindow constructor started
+[12:55:54.768] TRACE: MainWindow constructor finished
+[12:55:54.769] TRACE: Showing MainWindow
+[12:55:54.910] TRACE: MainWindow_Loaded started
+[12:55:54.914] TRACE: Applying permissions for role: admin
+[12:55:54.920] TRACE: Loading organizations
+[12:55:54.941] TRACE: Navigating to DashboardPage
+[12:55:57.016] TRACE: MainWindow_Loaded finished
+[13:18:35.723] TRACE: App constructor started
+[13:18:39.581] TRACE: Registering event subscribers
+[13:18:39.585] TRACE: App constructor finished
+[13:18:39.596] TRACE: OnStartup started
+[13:18:39.600] TRACE: Showing StartupWindow
+[13:18:41.253] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[13:19:11.283] TRACE: App: No LOCAL Mongo found
+[13:19:12.868] TRACE: StartupWindow result: True
+[13:19:12.869] TRACE: Restoring session
+[13:19:12.870] TRACE: Resolving MainWindow
+[13:19:12.872] TRACE: MainWindow constructor started
+[13:19:12.900] TRACE: MainWindow constructor finished
+[13:19:12.901] TRACE: Showing MainWindow
+[13:19:13.055] TRACE: MainWindow_Loaded started
+[13:19:13.057] TRACE: Applying permissions for role: admin
+[13:19:13.059] TRACE: Loading organizations
+[13:19:13.069] TRACE: Navigating to DashboardPage
+[13:19:15.173] TRACE: MainWindow_Loaded finished
+[13:30:22.055] TRACE: App constructor started
+[13:30:22.314] TRACE: Registering event subscribers
+[13:30:22.315] TRACE: App constructor finished
+[13:30:22.323] TRACE: OnStartup started
+[13:30:22.325] TRACE: Showing StartupWindow
+[13:30:24.641] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[13:30:54.646] TRACE: App: No LOCAL Mongo found
+[13:30:56.466] TRACE: StartupWindow result: True
+[13:30:56.466] TRACE: Restoring session
+[13:30:56.467] TRACE: Resolving MainWindow
+[13:30:56.472] TRACE: MainWindow constructor started
+[13:30:56.499] TRACE: MainWindow constructor finished
+[13:30:56.500] TRACE: Showing MainWindow
+[13:30:56.640] TRACE: MainWindow_Loaded started
+[13:30:56.643] TRACE: Applying permissions for role: admin
+[13:30:56.649] TRACE: Loading organizations
+[13:30:56.668] TRACE: Navigating to DashboardPage
+[13:30:56.822] TRACE: MainWindow_Loaded finished
+[14:28:13.860] TRACE: App constructor started
+[14:28:17.568] TRACE: Registering event subscribers
+[14:28:17.570] TRACE: App constructor finished
+[14:28:17.577] TRACE: OnStartup started
+[14:28:17.580] TRACE: Showing StartupWindow
+[14:28:19.474] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[14:28:49.503] TRACE: App: No LOCAL Mongo found
+[14:28:51.562] TRACE: StartupWindow result: True
+[14:28:51.563] TRACE: Restoring session
+[14:28:51.563] TRACE: Resolving MainWindow
+[14:28:51.565] TRACE: MainWindow constructor started
+[14:28:51.609] TRACE: MainWindow constructor finished
+[14:28:51.611] TRACE: Showing MainWindow
+[14:28:51.829] TRACE: MainWindow_Loaded started
+[14:28:51.832] TRACE: Applying permissions for role: admin
+[14:28:51.839] TRACE: Loading organizations
+[14:28:51.890] TRACE: Navigating to DashboardPage
+[14:28:54.045] TRACE: MainWindow_Loaded finished
+[14:50:19.825] TRACE: App constructor started
+[14:50:20.152] TRACE: Registering event subscribers
+[14:50:20.154] TRACE: App constructor finished
+[14:50:20.160] TRACE: OnStartup started
+[14:50:20.163] TRACE: Showing StartupWindow
+[14:50:22.794] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[14:50:52.810] TRACE: App: No LOCAL Mongo found
+[14:50:54.894] TRACE: StartupWindow result: True
+[14:50:54.895] TRACE: Restoring session
+[14:50:54.896] TRACE: Resolving MainWindow
+[14:50:54.897] TRACE: MainWindow constructor started
+[14:50:54.931] TRACE: MainWindow constructor finished
+[14:50:54.932] TRACE: Showing MainWindow
+[14:50:55.153] TRACE: MainWindow_Loaded started
+[14:50:55.157] TRACE: Applying permissions for role: admin
+[14:50:55.164] TRACE: Loading organizations
+[14:50:55.186] TRACE: Navigating to DashboardPage
+[14:50:55.474] TRACE: MainWindow_Loaded finished
+[14:52:18.023] TRACE: App constructor started
+[14:52:21.389] TRACE: Registering event subscribers
+[14:52:21.390] TRACE: App constructor finished
+[14:52:21.396] TRACE: OnStartup started
+[14:52:21.400] TRACE: Showing StartupWindow
+[14:52:24.241] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[14:52:54.277] TRACE: App: No LOCAL Mongo found
+[14:52:56.846] TRACE: StartupWindow result: True
+[14:52:56.846] TRACE: Restoring session
+[14:52:56.849] TRACE: Resolving MainWindow
+[14:52:56.850] TRACE: MainWindow constructor started
+[14:52:56.885] TRACE: MainWindow constructor finished
+[14:52:56.886] TRACE: Showing MainWindow
+[14:52:57.117] TRACE: MainWindow_Loaded started
+[14:52:57.121] TRACE: Applying permissions for role: admin
+[14:52:57.128] TRACE: Loading organizations
+[14:52:57.150] TRACE: Navigating to DashboardPage
+[14:52:59.294] TRACE: MainWindow_Loaded finished
+[15:25:25.198] TRACE: App constructor started
+[15:25:25.649] TRACE: Registering event subscribers
+[15:25:25.652] TRACE: App constructor finished
+[15:25:25.661] TRACE: OnStartup started
+[15:25:25.664] TRACE: Showing StartupWindow
+[15:25:28.542] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[15:25:58.597] TRACE: App: No LOCAL Mongo found
+[15:26:01.648] TRACE: StartupWindow result: True
+[15:26:01.649] TRACE: Restoring session
+[15:26:01.654] TRACE: Resolving MainWindow
+[15:26:01.656] TRACE: MainWindow constructor started
+[15:26:01.698] TRACE: MainWindow constructor finished
+[15:26:01.699] TRACE: Showing MainWindow
+[15:26:01.836] TRACE: MainWindow_Loaded started
+[15:26:01.838] TRACE: Applying permissions for role: admin
+[15:26:01.841] TRACE: Loading organizations
+[15:26:01.855] TRACE: Navigating to DashboardPage
+[15:26:02.207] TRACE: MainWindow_Loaded finished
+[16:18:27.603] TRACE: InventoryExplorerPage: Loading data. DB=MongoDB, SQLOrg=00000000-0000-0000-0000-000000000000, MongoOrg=69522c6c9abe0689722835e6
+[16:18:27.850] TRACE: InventoryExplorerPage: Mongo Collections: beats, dealercustomers, gatepassconfigs, transactions, gymproducts, societycleanerassignments, suppliertransferorders, supplierintransitstocks, supplierwarehousemanagers, quickaddproducts, rawmaterialauditlogs, finalproductbatches, supplierwarehouses, tasks, leaves, productionissues, orderitems, alerts, challenges, cameras, constructionGRN, packlists, transportlots, letters, returns, trainersessions, fuellogs, supplierinventories, sipper_contract_templates, constructionassets, hsesensors, trackingevents, departments, employees, sipper_customers, putawaytasks, cyclecounts, staffperformances, cylinderrefillrequests, chatmessages, transportautomationconfigs, dispatchmanifests, societystaffattendances, tradesupervisors, slmcustomers, approvalworkflows, womenhealths, projectmilestones, transportdriverlocationhistories, equipment, financialauditlogs, tradeoutwards, warehouse_assignments, knowledgebases, supplierpackingtasks, constructionadmintenders, cpdpexecutives, calibrations, productionreports, workershiftassignments, labourmusters, tadaclaims, agreementtemplates, grns, exchangerates, travellogs, constructioncrusheroperations, constructionaccountingrules, sipper_machine_product_overrides, gymmembers, transportroutes, supplyrequests, sessionrequests, constructionMaterialTransaction, manufacturingshifts, accountinggroups, constructionEquipmentMaintenance, workouttemplates, companyproducts, trackingsessions, gymnutritionistfoods, dealers, workouts, realestatetasks, discounts, constructionprojects, candidates, productionorders, roles, poscoupons, traineractivities, amc_onboarding_requests, leadmanagementcustomers, dailywageworkers, sipper_complaints, adminprojects, generalsettings, societyvisitorlogs, exercises, inventorylogs, groups, tickets, deals, amccontracttemplates, tdsrecords, purchaseddomains, presentationallocations, accounts, constructionEquipmentFuelLog, producttestspecifications, societycomplaints, suppliertransferdocuments, employeeloans, transportstaffs, constructiondrawinglayouts, resetPasswordAuditlog, members, constructionEquipmentBreakdown, nutrareceptionists, logistics_vehicles, suppliercyclecounts, packingtasks, outboundorders, employeelocationhistories, replenishmenttasks, visitoutcomes, bodymetrics, constructionequipment, transportattendances, dealerinvoices, supplierpicklists, proofofdeliveries, membershipplans, constructiongrn, emailtemplates, userintegrations, drivershifts, emailaccounts, prodmanagerinventoryitems, mrleads, notifications, wagecalculations, employee_vehicles, employeesalaries, materialissues, constructionEquipment, materialallocations, billofmaterials, transportbookings, materials, societyevents, chatrooms, staffattendances, qapassproducts, workersessions, chatmessage_v3, supplierstaffs, inventorytransactions, settlements, schemes, putawayrules, supplierpickers, supplierpackers, otherexpenses, companypolicies, sipper_order_items, tradebidders, societyfloors, manufacturertasks, labours, tradesalecontracts, vendors, realestatesellers, workallocations, constructionmaterialtransactions, gyms, cylinderdriverlocations, constructionprojectmanagers, sipper_products, activitylogs, supplierstockaudittrails, amc_daily_logs, transportmanifests, creditnotes, wavepicks, stabilitystudies, sipper_order_sessions, transporttrips, realestatesettings, groupleaders, dispatchstagings, advertisements, goodsreceiptnotes, mrtasks, completedworkouts, designations, presentations, constructionaccounts, pipelines, societybills, gymnutritionistfooddiaries, creditrules, dealerreturns, tradedispatches, emails, constructiontenders, fiscalperiods, posproducts, prodmanagerscraprecords, supplierdailyclosingchecklists, posbusinesssettings, capas, slmstaffs, cylinderprices, societystaffwingassignments, societyemergencyalerts, constructionprojectplans, supplierwarehouseclosures, accountgroups, barberbookings, posrecentsales, constructionsupervisorlabours, constructionexpenses, oosinvestigations, terminations, transportriders, attendances, bills, supplierpackingdetails, equipmentmaintenances, societymemberpayments, constructionmanagers, tradecontracts, sipper_machines, trainerattendances, conversations, slapolicies, tradeadminfarmers, crusheroperations, worktasks, employeeinvites, externallogs, turfownerturves, quotations, nutratrainers, tradegodowns, transportvehicles, hr_employees, constructionmachinelogs, gymplans, categories, transportexceptions, barcodes, wbstasks, jobs, societycleanerattendances, authorities, organizationinvites, constructionmaterials, sipper_staffs, womenhealthresources, notaries, servicelifecyclerequests, supplier_materials, field_orders, societynotices, constructionprocurements, amcsignatories, cylinderinventories, drafts, realestatechannelpartners, domaintransactions, organizations, translations, supplierbatches, clients, healthtrackings, dealerpayments, calls, orderaudits, workoutprograms, inventory, amc_categories, payments, documents, gymsettings, ledgers, slideviewlogs, warehousebins, labour, warehouseinventories, servicelifecyclejobcards, supplierquotations, poscustomers, locationpoints, auditlogs, gymmeal, transportstopevents, dealertickets, presentationsessions, vehicles, supplierinterwarehousetransfers, leadmanagementquotations, amc_subscriptions, constructioncontracts, tadas, leadtypes, gymmemberorders, teams, warehousepackingtasks, travelroutes, products, packings, barbersettings, clauses, developerbrokerinquiries, travelrequests, vouchertypes, tradeformulas, gymmembercarts, constructionattendances, hrs, loans, supplierreports, counters, inventorymovements, transportriderlocationhistories, paymentorders, supplierpickingtasks, visitlogs, payrolls, servicelifecycleinvoices, fleets, realestateauditlogs, stores, amc_complaints, supplierqcinspectors, hrtasks, memberships, dealercreditledgers, paymentintimations, returnrequests, picklists, gympayments, supplierfleetmanagers, supplierdrivers, messages, appsuppliers, sipper_maintenance_tasks, posts, constructionsiteinventories, contacts, realestatecommissions, loanconfigurations, societymembers, files, orders, machines, constructionequipments, mealplans, workcenters, barberroles, servicelifecyclesettings, orderissues, supervisorlabours, streamlogs, meals, productsimples, societycleaningtasks, tripplans, societyflats, turfowners, manufacturingissues, shifts, realestatedeals, announcements, suppliersafetyaudits, users, tradeparties, sipper_machine_types, amc_service_jobs, currencys, teamhierarchies, customers, supplierqualitychecks, suppliervehicles, sales, shipments, contractors, supplierorders, pods, connections, journals, transportusers, commissions, adminorders, ordertimelines, offerletters, amc_service_plans, labourdailylogs, manufacturer, projects, companysettings, rsaprofiles, materialrequests, constructionadmintendercompetitors, properties, leads, amc_service_items, chatmessage_v2, transportmetrics, mesactivitylogs, transportdrivers, amccontracts, gymattendances, cylinderpayments, trips, barbercustomers, supplierequipmenttrackings, lettertemplates, constructionMaterials, storagelocations, constructionSiteInventory, routeplans, checkpoints, classattendances, deviations, supplierpayments, supportcustomers, tradefarmers, transportscanevents, customreports, warehouseexceptions, authorizedsignatories, barberinvoices, webhooksubscriptions, finalproducts, trainermembers, supplierwarehousestaffs, complaints, offices, invoices, constructiontasks, admininventories, machinelogs, accountinginvoices, custom_fields, routelegs, constructionlabours, leadcustomers, offboardings, societyparcels, parcels, jobpostings, boards, fooddiaries, warehousestaff, constructionworkforces, listings, init_collection, supplierqctasks, goals, societymembermovements, cylinderorders, presentationimages, financialperiods, amc_products, warehouseputawaytasks, logisticsinventories, memberprofiles, apiintegrations, cameraaccesses, posbills, constructionaccountgroups, constructionEquipmentCostLog, automations, personalrecords, custom_field_values, billings, nutramembers, activities, mesmaterialrequests, constructiontransporttrips, foods, warehousepickingtasks, supplierstaffattendances, supplierinvoices, servicelifecyclereceipts, servicelifecycleestimates, supplymaterials, loanrequests, inventoryadjustments, paymentrequests, dealerorders, inboundshipments, gymworkoutplans, posdiscounts, constructiondailyreports, realestatebuyers, audiences, targets, tradeinwards, posreturns, realestatebrokers, productionordertemplates, amcschedules, constructionexecutionsites, batches, prodmanagerinventorylocations, inquiries, gymclasses, mrbudgets, telemetryevents, supplierinbounddeliveries, suppliertomorrowplannings, servicecategories, events, vouchersequences, classbookings, gymequipments, services, dealer_orders, transportsequences, warehouses, amcservices, admins, cpdppoints, gpstrackings, societymaintenancecomponents, sipper_orders, barberservices, environmentalmonitorings, suppliers, coupons, qualitybatches, employeedocuments, tadapolicies, realestatedevelopers, domains, gymfood, inventories, rawmaterials, pickingtasks, societywings, transportsettings, nutrition_history, constructionfuellogs, amcstaffleaves, fleetvehicles, logisticsvehicles, posterminals, warehousezones, stockalerts, customfielddefinitions, realestateleads, customfieldvalues, barberstaffs, supplierdeliverytrips, trainerstats, drivers, gymadmins, promotions, agreements, constructionMaterialMaster, realestatepayments, dashboardlayouts, servicelifecyclestatuslogs, bmirecords, nutrition_goals
+[16:18:28.153] TRACE: InventoryExplorerPage: Found 0 items in MongoDB
+[16:29:45.652] TRACE: App constructor started
+[16:29:45.945] TRACE: Registering event subscribers
+[16:29:45.946] TRACE: App constructor finished
+[16:29:45.951] TRACE: OnStartup started
+[16:29:45.953] TRACE: Showing StartupWindow
+[16:29:47.127] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[16:30:17.139] TRACE: App: No LOCAL Mongo found
+[16:30:18.567] TRACE: StartupWindow result: True
+[16:30:18.567] TRACE: Restoring session
+[16:30:18.568] TRACE: Resolving MainWindow
+[16:30:18.569] TRACE: MainWindow constructor started
+[16:30:18.593] TRACE: MainWindow constructor finished
+[16:30:18.594] TRACE: Showing MainWindow
+[16:30:18.728] TRACE: MainWindow_Loaded started
+[16:30:18.730] TRACE: Applying permissions for role: admin
+[16:30:18.734] TRACE: Loading organizations
+[16:30:18.747] TRACE: Navigating to DashboardPage
+[16:30:18.927] TRACE: MainWindow_Loaded finished
+[16:56:07.650] TRACE: App constructor started
+[16:56:11.871] TRACE: Registering event subscribers
+[16:56:11.873] TRACE: App constructor finished
+[16:56:11.880] TRACE: OnStartup started
+[16:56:11.883] TRACE: Showing StartupWindow
+[16:56:13.634] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[16:56:43.667] TRACE: App: No LOCAL Mongo found
+[16:56:45.029] TRACE: StartupWindow result: True
+[16:56:45.030] TRACE: Restoring session
+[16:56:45.031] TRACE: Resolving MainWindow
+[16:56:45.033] TRACE: MainWindow constructor started
+[16:56:45.079] TRACE: MainWindow constructor finished
+[16:56:45.079] TRACE: Showing MainWindow
+[16:56:45.214] TRACE: MainWindow_Loaded started
+[16:56:45.215] TRACE: Applying permissions for role: admin
+[16:56:45.218] TRACE: Loading organizations
+[16:56:45.230] TRACE: Navigating to DashboardPage
+[16:56:46.821] TRACE: MainWindow_Loaded finished
+[17:28:11.586] TRACE: App constructor started
+[17:28:15.386] TRACE: Registering event subscribers
+[17:28:15.388] TRACE: App constructor finished
+[17:28:15.393] TRACE: OnStartup started
+[17:28:15.396] TRACE: Showing StartupWindow
+[17:28:17.059] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: admin, config, local, test
+[17:28:47.082] TRACE: App: No LOCAL Mongo found
+[17:28:49.069] TRACE: StartupWindow result: True
+[17:28:49.070] TRACE: Restoring session
+[17:28:49.072] TRACE: Resolving MainWindow
+[17:28:49.074] TRACE: MainWindow constructor started
+[17:28:49.101] TRACE: MainWindow constructor finished
+[17:28:49.103] TRACE: Showing MainWindow
+[17:28:49.276] TRACE: MainWindow_Loaded started
+[17:28:49.278] TRACE: Applying permissions for role: admin
+[17:28:49.281] TRACE: Loading organizations
+[17:28:49.295] TRACE: Navigating to DashboardPage
+[17:28:50.745] TRACE: MainWindow_Loaded finished
+[10:17:28.710] TRACE: App constructor started
+[10:17:35.078] TRACE: Registering event subscribers
+[10:17:35.080] TRACE: App constructor finished
+[10:17:35.083] TRACE: OnStartup started
+[10:17:35.085] TRACE: Showing StartupWindow
+[10:17:37.688] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[10:18:07.739] TRACE: App: No LOCAL Mongo found
+[10:18:09.760] TRACE: StartupWindow result: True
+[10:18:09.761] TRACE: Restoring session
+[10:18:09.762] TRACE: Resolving MainWindow
+[10:18:09.763] TRACE: MainWindow constructor started
+[10:18:09.782] TRACE: MainWindow constructor finished
+[10:18:09.783] TRACE: Showing MainWindow
+[10:18:09.923] TRACE: MainWindow_Loaded started
+[10:18:09.923] TRACE: Applying permissions for role: admin
+[10:18:09.925] TRACE: Loading organizations
+[10:18:09.934] TRACE: Navigating to DashboardPage
+[10:18:11.875] TRACE: MainWindow_Loaded finished
+[11:16:33.450] TRACE: App constructor started
+[11:16:36.383] TRACE: Registering event subscribers
+[11:16:36.385] TRACE: App constructor finished
+[11:16:36.390] TRACE: OnStartup started
+[11:16:36.393] TRACE: Showing StartupWindow
+[11:16:38.172] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[11:17:08.183] TRACE: App: No LOCAL Mongo found
+[11:17:10.465] TRACE: StartupWindow result: True
+[11:17:10.466] TRACE: Restoring session
+[11:17:10.467] TRACE: Resolving MainWindow
+[11:17:10.469] TRACE: MainWindow constructor started
+[11:17:10.503] TRACE: MainWindow constructor finished
+[11:17:10.506] TRACE: Showing MainWindow
+[11:17:10.664] TRACE: MainWindow_Loaded started
+[11:17:10.666] TRACE: Applying permissions for role: admin
+[11:17:10.670] TRACE: Loading organizations
+[11:17:10.713] TRACE: Navigating to DashboardPage
+[11:17:13.002] TRACE: MainWindow_Loaded finished
+[11:25:32.243] TRACE: App constructor started
+[11:25:35.256] TRACE: Registering event subscribers
+[11:25:35.257] TRACE: App constructor finished
+[11:25:35.262] TRACE: OnStartup started
+[11:25:35.265] TRACE: Showing StartupWindow
+[11:25:38.135] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[11:26:08.159] TRACE: App: No LOCAL Mongo found
+[11:26:10.314] TRACE: StartupWindow result: True
+[11:26:10.315] TRACE: Restoring session
+[11:26:10.316] TRACE: Resolving MainWindow
+[11:26:10.317] TRACE: MainWindow constructor started
+[11:26:10.351] TRACE: MainWindow constructor finished
+[11:26:10.353] TRACE: Showing MainWindow
+[11:26:10.520] TRACE: MainWindow_Loaded started
+[11:26:10.522] TRACE: Applying permissions for role: admin
+[11:26:10.526] TRACE: Loading organizations
+[11:26:10.539] TRACE: Navigating to DashboardPage
+[11:26:13.215] TRACE: MainWindow_Loaded finished
+[11:32:45.426] TRACE: App constructor started
+[11:32:47.887] TRACE: Registering event subscribers
+[11:32:47.888] TRACE: App constructor finished
+[11:32:47.892] TRACE: OnStartup started
+[11:32:47.894] TRACE: Showing StartupWindow
+[11:32:48.974] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[11:33:18.984] TRACE: App: No LOCAL Mongo found
+[11:33:20.515] TRACE: StartupWindow result: True
+[11:33:20.516] TRACE: Restoring session
+[11:33:20.517] TRACE: Resolving MainWindow
+[11:33:20.518] TRACE: MainWindow constructor started
+[11:33:20.541] TRACE: MainWindow constructor finished
+[11:33:20.542] TRACE: Showing MainWindow
+[11:33:20.624] TRACE: MainWindow_Loaded started
+[11:33:20.626] TRACE: Applying permissions for role: admin
+[11:33:20.628] TRACE: Loading organizations
+[11:33:20.637] TRACE: Navigating to DashboardPage
+[11:33:21.815] TRACE: MainWindow_Loaded finished
+[16:05:26.166] TRACE: App constructor started
+[16:05:28.716] TRACE: Registering event subscribers
+[16:05:28.717] TRACE: App constructor finished
+[16:05:28.722] TRACE: OnStartup started
+[16:05:28.724] TRACE: Showing StartupWindow
+[16:05:29.910] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[16:05:59.925] TRACE: App: No LOCAL Mongo found
+[16:06:01.269] TRACE: StartupWindow result: True
+[16:06:01.269] TRACE: Restoring session
+[16:06:01.270] TRACE: Resolving MainWindow
+[16:06:01.271] TRACE: MainWindow constructor started
+[16:06:01.297] TRACE: MainWindow constructor finished
+[16:06:01.299] TRACE: Showing MainWindow
+[16:06:01.401] TRACE: MainWindow_Loaded started
+[16:06:01.402] TRACE: Applying permissions for role: admin
+[16:06:01.404] TRACE: Loading organizations
+[16:06:01.415] TRACE: Navigating to DashboardPage
+[16:06:02.621] TRACE: MainWindow_Loaded finished
+[16:12:28.076] TRACE: Applying permissions for role: admin
+[16:12:28.076] TRACE: Loading organizations
+[17:14:59.239] TRACE: App constructor started
+[17:15:01.617] TRACE: Registering event subscribers
+[17:15:01.618] TRACE: App constructor finished
+[17:15:01.623] TRACE: OnStartup started
+[17:15:01.625] TRACE: Showing StartupWindow
+[17:15:02.712] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[17:15:32.731] TRACE: App: No LOCAL Mongo found
+[17:15:32.770] TRACE: StartupWindow result: True
+[17:15:32.771] TRACE: Restoring session
+[17:15:32.771] TRACE: Resolving MainWindow
+[17:15:32.773] TRACE: MainWindow constructor started
+[17:15:32.814] TRACE: MainWindow constructor finished
+[17:15:32.816] TRACE: Showing MainWindow
+[17:15:32.933] TRACE: MainWindow_Loaded started
+[17:15:32.934] TRACE: Applying permissions for role: admin
+[17:15:32.937] TRACE: Loading organizations
+[17:15:32.949] TRACE: Navigating to DashboardPage
+[17:15:34.246] TRACE: MainWindow_Loaded finished
+[17:26:49.942] TRACE: Applying permissions for role: admin
+[17:26:49.942] TRACE: Loading organizations
+[17:28:29.630] TRACE: App constructor started
+[17:28:33.117] TRACE: Registering event subscribers
+[17:28:33.118] TRACE: App constructor finished
+[17:28:33.124] TRACE: OnStartup started
+[17:28:33.126] TRACE: Showing StartupWindow
+[17:28:34.754] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[17:29:04.772] TRACE: App: No LOCAL Mongo found
+[17:29:04.828] TRACE: StartupWindow result: True
+[17:29:04.829] TRACE: Restoring session
+[17:29:04.830] TRACE: Resolving MainWindow
+[17:29:04.832] TRACE: MainWindow constructor started
+[17:29:04.871] TRACE: MainWindow constructor finished
+[17:29:04.872] TRACE: Showing MainWindow
+[17:29:05.021] TRACE: MainWindow_Loaded started
+[17:29:05.022] TRACE: Applying permissions for role: admin
+[17:29:05.024] TRACE: Loading organizations
+[17:29:05.033] TRACE: Navigating to DashboardPage
+[17:29:06.447] TRACE: MainWindow_Loaded finished
+[17:35:44.605] TRACE: App constructor started
+[17:35:48.472] TRACE: Registering event subscribers
+[17:35:48.473] TRACE: App constructor finished
+[17:35:48.478] TRACE: OnStartup started
+[17:35:48.480] TRACE: Showing StartupWindow
+[17:35:49.952] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[17:36:19.969] TRACE: App: No LOCAL Mongo found
+[17:36:20.056] TRACE: StartupWindow result: True
+[17:36:20.057] TRACE: Restoring session
+[17:36:20.057] TRACE: Resolving MainWindow
+[17:36:20.058] TRACE: MainWindow constructor started
+[17:36:20.093] TRACE: MainWindow constructor finished
+[17:36:20.094] TRACE: Showing MainWindow
+[17:36:20.227] TRACE: MainWindow_Loaded started
+[17:36:20.229] TRACE: Applying permissions for role: admin
+[17:36:20.233] TRACE: Loading organizations
+[17:36:20.242] TRACE: Navigating to DashboardPage
+[17:36:22.010] TRACE: MainWindow_Loaded finished
+[17:42:12.473] TRACE: App constructor started
+[17:42:16.341] TRACE: Registering event subscribers
+[17:42:16.343] TRACE: App constructor finished
+[17:42:16.348] TRACE: OnStartup started
+[17:42:16.350] TRACE: Showing StartupWindow
+[17:42:17.945] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[17:42:47.957] TRACE: App: No LOCAL Mongo found
+[17:43:22.917] TRACE: StartupWindow result: True
+[17:43:22.917] TRACE: Restoring session
+[17:43:22.918] TRACE: Resolving MainWindow
+[17:43:22.919] TRACE: MainWindow constructor started
+[17:43:22.943] TRACE: MainWindow constructor finished
+[17:43:22.944] TRACE: Showing MainWindow
+[17:43:23.130] TRACE: MainWindow_Loaded started
+[17:43:23.133] TRACE: Applying permissions for role: admin
+[17:43:23.134] TRACE: Loading organizations
+[17:43:23.144] TRACE: Navigating to DashboardPage
+[17:43:25.323] TRACE: MainWindow_Loaded finished

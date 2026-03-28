@@ -230,6 +230,78 @@ namespace Acczite20.Services
             catch { return "None"; }
         }
 
+        /// <summary>
+        /// Queries Tally for the company's "Books beginning from" date ($BooksFrom / BOOKSFROM).
+        /// Returns null if Tally is not running, no company is open, or the field is unavailable.
+        /// The caller should fall back to (today - 2 years) when null is returned.
+        /// </summary>
+        public async Task<DateTimeOffset?> GetCompanyBooksFromAsync()
+        {
+            var envelope = @"
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>AccziteCompanyDates</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME=""AccziteCompanyDates"" ISMODIFY=""No"">
+            <TYPE>Company</TYPE>
+            <FETCH>NAME, BOOKSFROM, STARTINGFROM</FETCH>
+          </COLLECTION>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>";
+            try
+            {
+                var response = await SendEnvelopeAsync(envelope);
+                if (string.IsNullOrWhiteSpace(response) || HasLineError(response))
+                    return null;
+
+                // Try BOOKSFROM first, fall back to STARTINGFROM
+                foreach (var tag in new[] { "BOOKSFROM", "STARTINGFROM" })
+                {
+                    var value = ExtractFirstTagValue(response, tag);
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        // Tally returns dates as yyyyMMdd (e.g. "20250401")
+                        if (DateTime.TryParseExact(value.Trim(), "yyyyMMdd",
+                                System.Globalization.CultureInfo.InvariantCulture,
+                                System.Globalization.DateTimeStyles.None, out var dt))
+                            return new DateTimeOffset(dt, TimeSpan.Zero);
+
+                        // Fallback: d-MMM-yyyy (e.g. "1-Apr-2025")
+                        if (DateTime.TryParse(value.Trim(),
+                                System.Globalization.CultureInfo.InvariantCulture,
+                                System.Globalization.DateTimeStyles.None, out dt))
+                            return new DateTimeOffset(dt, TimeSpan.Zero);
+                    }
+                }
+                return null;
+            }
+            catch { return null; }
+        }
+
+        private static string? ExtractFirstTagValue(string xml, string tagName)
+        {
+            var open  = $"<{tagName}>";
+            var close = $"</{tagName}>";
+            var start = xml.IndexOf(open, StringComparison.OrdinalIgnoreCase);
+            if (start < 0) return null;
+            start += open.Length;
+            var end = xml.IndexOf(close, start, StringComparison.OrdinalIgnoreCase);
+            return end < 0 ? null : xml[start..end].Trim();
+        }
+
         public async Task<decimal> GetTallyTrialBalanceTotalAsync()
         {
             // We fetch the 'Summary' which is the base of Trial Balance but much lighter to parse.
@@ -338,7 +410,8 @@ namespace Acczite20.Services
                 "List of Ledgers", "List of Groups", "List of Voucher Types", "List of Stock Items",
                 "List of Stock Groups", "List of Cost Centres", "List of Cost Categories", "List of Currencies",
                 "List of Budgets", "List of Units", "List of Godowns", "List of Payroll Categories",
-                "List of Payroll Cost Centres", "List of Attendance Types", "List of Employees", "Voucher"
+                "List of Payroll Cost Centres", "List of Attendance Types", "List of Employees", "Voucher", "Day Book", "Daybook",
+                "Banking", "Balance Sheet", "Profit & Loss", "Stock Summary"
             };
 
             return knownCollections.ToList();
@@ -373,114 +446,15 @@ namespace Acczite20.Services
             catch { return new List<string>(); }
         }
 
-        public async Task<string?> ExportCollectionXmlAsync(string collectionOrReport, DateTimeOffset? fromDate = null, DateTimeOffset? toDate = null, bool isCollection = true, string? idList = null)
+        public async Task<int> GetCollectionCountAsync(string collectionOrReport, DateTimeOffset? fromDate = null, DateTimeOffset? toDate = null)
         {
-            // Master data (Groups, Ledgers, VoucherTypes, Currencies) does NOT need date ranges.
-            // Requesting OPENINGBALANCE with a 5-year span forces Tally to recompute balances
-            // for every ledger across that entire period — this causes OOM crashes.
-            // Only pass dates when explicitly provided (i.e., for voucher-type requests).
-            var from = fromDate?.ToString("yyyyMMdd");
-            var to = toDate?.ToString("yyyyMMdd");
-            
-            string envelope;
-            if (isCollection)
+            try
             {
-                // Enhanced Enterprise-Grade TDL Injection for Masters
-                string tdlPart = "";
-                string collectionId = collectionOrReport;
+                var from = (fromDate ?? DateTimeOffset.Now.AddDays(-1)).ToString("yyyyMMdd");
+                var to   = (toDate   ?? DateTimeOffset.Now).ToString("yyyyMMdd");
 
-                // Handle common Master mapping to ensure they never return 0 due to Tally GUI inconsistencies
-                if (collectionId == "List of Groups")
-                {
-                    collectionId = "AccziteGroups"; // Use isolated custom collection
-                    tdlPart = @"
-<TDL>
-  <TDLMESSAGE>
-    <COLLECTION NAME=""AccziteGroups"" ISMODIFY=""No"">
-      <TYPE>Group</TYPE>
-      <FETCH>MASTERID, NAME, PARENT, NATUREOFGROUP, ISPRIMARY, AFFECTSGROSSPROFIT</FETCH>
-    </COLLECTION>
-  </TDLMESSAGE>
-</TDL>";
-                }
-                else if (collectionId == "List of Ledgers" || collectionId == "AccziteLedgerHeaders")
-                {
-                    collectionId = "AccziteLedgerHeaders"; // Use isolated custom collection
-                    tdlPart = @"
-<TDL>
-  <TDLMESSAGE>
-    <COLLECTION NAME=""AccziteLedgerHeaders"" ISMODIFY=""No"">
-      <TYPE>Ledger</TYPE>
-      <FETCH>MASTERID, NAME, PARENT, OPENINGBALANCE</FETCH>
-    </COLLECTION>
-  </TDLMESSAGE>
-</TDL>";
-                }
-                else if (collectionId == "AccziteLedgerDetails")
-                {
-                    tdlPart = @"
-<TDL>
-  <TDLMESSAGE>
-    <COLLECTION NAME=""AccziteLedgerDetails"" ISMODIFY=""No"">
-      <TYPE>Ledger</TYPE>
-      <FETCH>MASTERID, CLOSINGBALANCE, GSTAPPLICABILITY, GSTREGISTRATIONTYPE, PARTYGSTIN, GSTIN, ISBILLWISEON, LEDSTATENAME, INCOMETAXNUMBER, EMAIL, MAILINGNAME, ADDRESS.LIST.*</FETCH>
-    </COLLECTION>
-  </TDLMESSAGE>
-</TDL>";
-                }
-                else if (collectionId == "List of Voucher Types")
-                {
-                    collectionId = "AccziteVoucherTypes";
-                    tdlPart = @"
-<TDL>
-  <TDLMESSAGE>
-    <COLLECTION NAME=""AccziteVoucherTypes"" ISMODIFY=""No"">
-      <TYPE>VoucherType</TYPE>
-      <FETCH>NAME, PARENT</FETCH>
-    </COLLECTION>
-  </TDLMESSAGE>
-</TDL>";
-                }
-
-                string idFilterTdl = string.IsNullOrEmpty(idList) ? "" : @"
-            <SYSTEM TYPE=""Variable"" NAME=""AccziteIdList"" DATATYPE=""String""/>
-            <SYSTEM TYPE=""Formulae"" NAME=""AccziteIdFilter"">
-              $$Contains:"",""+##AccziteIdList+"","":"",""+$MASTERID+"",""
-            </SYSTEM>";
-
-                string filterSyntax = string.IsNullOrEmpty(idList) ? "" : "\n      <FILTER>AccziteIdFilter</FILTER>";
-
-                // Inject FILTER into the collection definition if it doesn't have one
-                if (!string.IsNullOrEmpty(filterSyntax) && tdlPart.Contains("</TYPE>") && !tdlPart.Contains("<FILTER>"))
-                {
-                    tdlPart = tdlPart.Replace("</TYPE>", "</TYPE>" + filterSyntax);
-                }
-
-                // Inject FORMULAE into the TDLMESSAGE if we added a filter
-                if (!string.IsNullOrEmpty(idFilterTdl) && tdlPart.Contains("</TDLMESSAGE>"))
-                {
-                    tdlPart = tdlPart.Replace("</TDLMESSAGE>", idFilterTdl + "\n  </TDLMESSAGE>");
-                }
-
-                envelope = $@"
-<ENVELOPE>
-  <HEADER>
-    <VERSION>1</VERSION>
-    <TALLYREQUEST>Export</TALLYREQUEST>
-    <TYPE>Collection</TYPE>
-    <ID>{collectionId}</ID>
-  </HEADER>
-  <BODY>
-    <DESC>
-        {GetStaticVariablesXml(from, to, idList)}
-        {tdlPart}
-    </DESC>
-  </BODY>
-</ENVELOPE>";
-            }
-            else
-            {
-                envelope = $@"
+                // Optimization: Use a minimal TDL that ONLY returns the count
+                string envelope = $@"
 <ENVELOPE>
   <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
   <BODY>
@@ -492,112 +466,51 @@ namespace Acczite20.Services
     </EXPORTDATA>
   </BODY>
 </ENVELOPE>";
+
+                var response = await SendEnvelopeAsync(envelope);
+                if (string.IsNullOrWhiteSpace(response)) return 0;
+
+                // Tally reports often return a list or a summary. 
+                // We count occurrence of common voucher/master tags.
+                // For "Voucher" or "Day Book", we can use a more precise collection probe later.
+                var count = response.Split(new[] { "<VOUCHER", "<LEDGER", "<STOCKITEM", "<GROUP" }, StringSplitOptions.None).Length - 1;
+                return Math.Max(0, count);
             }
+            catch { return 0; }
+        }
 
-            // Persistence for Debug
-            try { System.IO.File.WriteAllText("tally_master_request.xml", envelope); } catch {}
 
-            // Use the 10-minute export client — master collections (especially ledgers) can be large.
-            return await SendExportEnvelopeAsync(envelope);
+
+        public async Task<string?> ExportCollectionXmlAsync(string collectionOrReport, DateTimeOffset? fromDate = null, DateTimeOffset? toDate = null, bool isCollection = true, string? idList = null, string? customTdl = null, Dictionary<string, string>? variables = null)
+        {
+            try
+            {
+                using var lease = await OpenCollectionXmlStreamAsync(collectionOrReport, fromDate, toDate, isCollection, default, idList, customTdl, variables);
+                if (lease == null) return null;
+
+                using var reader = new System.IO.StreamReader(lease.Stream);
+                return await reader.ReadToEndAsync();
+            }
+            catch (Exception ex)
+            {
+                _syncMonitor?.AddLog($"ExportCollectionXmlAsync failed: {ex.Message}", "ERROR", "TALLY");
+                return null;
+            }
         }
 
         public async Task<(System.IO.Stream? Stream, long Size)> ExportCollectionXmlStreamAsync(string collectionOrReport, DateTimeOffset? fromDate = null, DateTimeOffset? toDate = null, bool isCollection = true)
         {
-            var from = (fromDate ?? DateTimeOffset.Now.AddDays(-1)).ToString("yyyyMMdd");
-            var to   = (toDate   ?? DateTimeOffset.Now).ToString("yyyyMMdd");
-
-            string envelope;
-            if (isCollection)
-            {
-                // Each pass now defines ONLY the specific collection it needs.
-                // Previously all 4 collection definitions were embedded in every request,
-                // forcing Tally to compile 4× the work per pass. This reduced Tally to
-                // a single targeted TDL definition per HTTP call.
-                var collectionTdl = GetSingleCollectionTdl(collectionOrReport);
-                envelope = $@"
-<ENVELOPE>
-  <HEADER>
-    <VERSION>1</VERSION>
-    <TALLYREQUEST>Export</TALLYREQUEST>
-    <TYPE>Collection</TYPE>
-    <ID>{collectionOrReport}</ID>
-  </HEADER>
-  <BODY>
-    <DESC>
-        {GetStaticVariablesXml(from, to)}
-        <TDL>
-          <TDLMESSAGE>
-            {collectionTdl}
-            <SYSTEM TYPE=""Formulae"" NAME=""AccziteDateFilter"">
-              $$IsBetween:$Date:##SVFROMDATE:##SVTODATE
-            </SYSTEM>
-          </TDLMESSAGE>
-        </TDL>
-    </DESC>
-  </BODY>
-</ENVELOPE>";
-            }
-            else
-            {
-                envelope = $@"
-<ENVELOPE>
-  <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
-  <BODY>
-    <EXPORTDATA>
-      <REQUESTDESC>
-        {GetStaticVariablesXml(from, to)}
-        <REPORTNAME>{collectionOrReport}</REPORTNAME>
-      </REQUESTDESC>
-    </EXPORTDATA>
-  </BODY>
-</ENVELOPE>";
-            }
-            if (IsCircuitOpen())
-            {
-                _syncMonitor?.AddLog(
-                    $"Circuit {_circuitState} ({CircuitCooldownRemaining()}s remaining). Stream blocked.",
-                    "WARNING", "CIRCUIT");
-                return (null, 0);
-            }
-
-            if (_circuitState == CircuitState.HalfOpen && !TryBeginProbe()) return (null, 0);
-
-            await _tallyGate.WaitAsync();
             try
             {
-                // Stream requests carry an extra cost (StreamExtraCostMs) on top of adaptive backoff
-                // because they are the heaviest operation — a single day-chunk can be 10+ MB.
-                var gap   = (DateTime.UtcNow - _lastRequestCompletedAt).TotalMilliseconds;
-                var delay = CurrentDelayMs(isStream: true);
-                if (gap < delay) await Task.Delay((int)(delay - gap));
-
-                System.IO.File.WriteAllText("tally_request_stream.xml", envelope);
-
-                var sw = System.Diagnostics.Stopwatch.StartNew();
-                var content  = new StringContent(envelope, Encoding.UTF8, "application/xml");
-                var response = await _exportHttpClient.PostAsync(TallyUrl, content);
-                sw.Stop();
-                _lastRequestCompletedAt = DateTime.UtcNow;
-
-                if (response.IsSuccessStatusCode)
-                {
-                    RecordResponseTime(sw.Elapsed);
-                    RecordSuccess();
-                    var bytes = await response.Content.ReadAsByteArrayAsync();
-                    return (new System.IO.MemoryStream(bytes), bytes.Length);
-                }
-
-                RecordFailureWeighted(1);
+                var lease = await OpenCollectionXmlStreamAsync(collectionOrReport, fromDate, toDate, isCollection);
+                if (lease == null) return (null, 0);
+                return (lease.Stream, lease.DeclaredSize);
             }
             catch (Exception ex)
             {
-                RecordException(ex);
+                _syncMonitor?.AddLog($"ExportCollectionXmlStreamAsync failed: {ex.Message}", "ERROR", "TALLY");
+                return (null, 0);
             }
-            finally
-            {
-                _tallyGate.Release();
-            }
-            return (null, 0);
         }
 
         public async Task<TallyXmlStreamLease?> OpenCollectionXmlStreamAsync(
@@ -606,7 +519,9 @@ namespace Acczite20.Services
             DateTimeOffset? toDate = null,
             bool isCollection = true,
             CancellationToken ct = default,
-            string? idList = null)
+            string? idList = null,
+            string? customTdl = null,
+            Dictionary<string, string>? variables = null)
         {
             var from = (fromDate ?? DateTimeOffset.Now.AddDays(-1)).ToString("yyyyMMdd");
             var to = (toDate ?? DateTimeOffset.Now).ToString("yyyyMMdd");
@@ -617,24 +532,25 @@ namespace Acczite20.Services
                 var collectionTdl = GetSingleCollectionTdl(collectionOrReport);
                 if (!string.IsNullOrEmpty(idList))
                 {
-                    // ADD the ID filter alongside the date filter — do NOT replace it.
-                    // Multiple <FILTER> entries are AND-ed by Tally, so both constraints apply.
-                    // Removing the date filter caused Tally to scan all vouchers from all time
-                    // with ALLLEDGERENTRIES.* on each detail batch → OOM crash.
                     collectionTdl = collectionTdl.Replace(
                         "<FILTER>AccziteDateFilter</FILTER>",
                         "<FILTER>AccziteDateFilter</FILTER><FILTER>AccziteIdFilter</FILTER>");
                 }
 
-                // $$Contains:MainString:SubString — checks if MainString contains SubString.
-                // Wrapping both sides with commas prevents false prefix matches
-                // (e.g. "ID1" must not match "ID10,ID11,...").
-                // $$InList was wrong here — it expects a named TDL Collection, not a string var.
                 string idFilterTdl = string.IsNullOrEmpty(idList) ? "" : @"
             <SYSTEM TYPE=""Variable"" NAME=""AccziteIdList"" DATATYPE=""String""/>
             <SYSTEM TYPE=""Formulae"" NAME=""AccziteIdFilter"">
-              $$Contains:"",""+##AccziteIdList+"","":"",""+$$String:$MASTERID+"",""
+              $$Contains:("",""+##AccziteIdList+"",""):("",""+$$String:$MASTERID+"","")
             </SYSTEM>";
+
+                var varsXml = GetStaticVariablesXml(from, to, idList);
+                if (variables != null)
+                {
+                    foreach (var kv in variables)
+                    {
+                        varsXml += $"\n        <SV{kv.Key.ToUpper()}>{kv.Value}</SV{kv.Key.ToUpper()}>";
+                    }
+                }
 
                 envelope = $@"
 <ENVELOPE>
@@ -646,13 +562,13 @@ namespace Acczite20.Services
   </HEADER>
   <BODY>
     <DESC>
-        {GetStaticVariablesXml(from, to, idList)}
+        {varsXml}
         <TDL>
           <TDLMESSAGE>
-            {collectionTdl}
+            {customTdl ?? collectionTdl}
             {idFilterTdl}
             <SYSTEM TYPE=""Formulae"" NAME=""AccziteDateFilter"">
-              $$IsBetween:$Date:##SVFROMDATE:##SVTODATE
+               $IsBetween:$Date:##SVFROMDATE:##SVTODATE
             </SYSTEM>
           </TDLMESSAGE>
         </TDL>
@@ -678,25 +594,18 @@ namespace Acczite20.Services
 
             if (IsCircuitOpen())
             {
-                _syncMonitor?.AddLog(
-                    $"Circuit breaker {_circuitState} ({CircuitCooldownRemaining()}s remaining). Stream export blocked.",
-                    "WARNING",
-                    "CIRCUIT");
+                _syncMonitor?.AddLog($"Circuit breaker {_circuitState} ({CircuitCooldownRemaining()}s remaining).", "WARNING", "CIRCUIT");
                 return null;
             }
 
             bool isProbe = (_circuitState == CircuitState.HalfOpen);
-            if (isProbe && !TryBeginProbe())
-            {
-                return null;
-            }
-
-            bool releaseGate = true;
-            HttpResponseMessage? response = null;
+            if (isProbe && !TryBeginProbe()) return null;
 
             _syncMonitor?.AddLog("Waiting for Tally Gate (stream)...", "DEBUG", "TALLY");
             await _tallyGate.WaitAsync(ct);
 
+            HttpResponseMessage? response = null;
+            bool releaseGate = true;
             try
             {
                 var adaptiveDelay = CurrentDelayMs(isStream: true);
@@ -707,23 +616,18 @@ namespace Acczite20.Services
                 }
 
                 System.IO.File.WriteAllText("tally_request_stream.xml", envelope);
+                _syncMonitor?.AddLog($"[TALLY→] {collectionOrReport} | from={from} to={to} | company={SessionManager.Instance.TallyCompanyName}", "DEBUG", "TALLY");
 
                 using var request = new HttpRequestMessage(HttpMethod.Post, TallyUrl)
                 {
                     Content = new StringContent(envelope, Encoding.UTF8, "application/xml")
                 };
 
-                response = await _exportHttpClient.SendAsync(
-                    request,
-                    HttpCompletionOption.ResponseHeadersRead,
-                    ct);
+                response = await _exportHttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
 
                 if (!response.IsSuccessStatusCode)
                 {
                     RecordFailureWeighted(1);
-                    _syncMonitor?.AddLog($"Tally stream request failed with status {(int)response.StatusCode}.", "ERROR", "TALLY");
-                    response.Dispose();
-                    response = null;
                     return null;
                 }
 
@@ -736,16 +640,12 @@ namespace Acczite20.Services
                     response.Content.Headers.ContentLength,
                     async () =>
                     {
-                        try
-                        {
-                            await stream.DisposeAsync();
-                        }
+                        try { await stream.DisposeAsync(); }
                         finally
                         {
                             response.Dispose();
                             _lastRequestCompletedAt = DateTime.UtcNow;
                             _tallyGate.Release();
-                            _syncMonitor?.AddLog("Released Tally Gate (stream).", "DEBUG", "TALLY");
                         }
                     });
             }
@@ -761,7 +661,6 @@ namespace Acczite20.Services
                     response?.Dispose();
                     _lastRequestCompletedAt = DateTime.UtcNow;
                     _tallyGate.Release();
-                    _syncMonitor?.AddLog("Released Tally Gate (stream).", "DEBUG", "TALLY");
                 }
             }
         }
@@ -777,7 +676,7 @@ namespace Acczite20.Services
             <COLLECTION NAME=""AccziteVoucherHeaders"" ISMODIFY=""No"">
               <TYPE>Voucher</TYPE>
               <FILTER>AccziteDateFilter</FILTER>
-              <FETCH>MASTERID, DATE, VOUCHERNUMBER, VOUCHERTYPENAME, ALTERID</FETCH>
+              <FETCH>MASTERID</FETCH>
             </COLLECTION>",
 
             "AccziteVoucherLedgers" => @"
@@ -814,7 +713,7 @@ namespace Acczite20.Services
             <COLLECTION NAME=""AccziteVoucherPipeline"" ISMODIFY=""No"">
               <TYPE>Voucher</TYPE>
               <FILTER>AccziteDateFilter</FILTER>
-              <FETCH>MASTERID, ALTERID, DATE, VOUCHERNUMBER, REFERENCE, VOUCHERTYPENAME, NARRATION, ISCANCELLED, ISOPTIONAL, ALLLEDGERENTRIES.*, ALLINVENTORYENTRIES.*, INVENTORYALLOCATIONS.*, TAXCLASSIFICATIONDETAILS.*</FETCH>
+              <FETCH>MASTERID, ALTERID, GUID, DATE, VOUCHERNUMBER, REFERENCE, VOUCHERTYPENAME, PARTYLEDGERNAME, EFFECTIVEDATE, NARRATION, ISCANCELLED, ISOPTIONAL, ALLLEDGERENTRIES.*, ALLINVENTORYENTRIES.*, INVENTORYALLOCATIONS.*, TAXCLASSIFICATIONDETAILS.*</FETCH>
             </COLLECTION>",
 
             // Pass 2 of the two-pass pipeline — ledger + inventory detail only.
@@ -825,7 +724,7 @@ namespace Acczite20.Services
             <COLLECTION NAME=""AccziteVoucherDetail"" ISMODIFY=""No"">
               <TYPE>Voucher</TYPE>
               <FILTER>AccziteDateFilter</FILTER>
-              <FETCH>MASTERID, ISCANCELLED, ISOPTIONAL, REFERENCE, NARRATION, ALLLEDGERENTRIES.*, ALLINVENTORYENTRIES.*</FETCH>
+              <FETCH>MASTERID, ALTERID, GUID, DATE, VOUCHERNUMBER, REFERENCE, VOUCHERTYPENAME, PARTYLEDGERNAME, EFFECTIVEDATE, NARRATION, ISCANCELLED, ISOPTIONAL, ALLLEDGERENTRIES.*, ALLINVENTORYENTRIES.*</FETCH>
             </COLLECTION>",
 
             "AccziteLedgerHeaders" => @"
@@ -840,6 +739,49 @@ namespace Acczite20.Services
               <FETCH>MASTERID, NAME, PARENT, CLOSINGBALANCE, MAILINGNAME, ADDRESS, STATENAME, PINCODE, INCOMETAXNUMBER, EMAIL, ISBILLWISEON, PARTYGSTIN, GSTREGISTRATIONTYPE, GSTAPPLICABILITY</FETCH>
             </COLLECTION>",
 
+            // ── Balance Sheet: Assets + Liabilities groups with closing balances ──
+            // Used by Phase 8 to snapshot group-level balance sheet data from Tally.
+            "AccziteBalanceSheetGroups" => @"
+            <COLLECTION NAME=""AccziteBalanceSheetGroups"" ISMODIFY=""No"">
+              <TYPE>Group</TYPE>
+              <FETCH>MASTERID, NAME, PARENT, NATUREOFGROUP, OPENINGBALANCE, CLOSINGBALANCE, ISADDABLE</FETCH>
+              <FILTER>AccziteBalanceSheetFilter</FILTER>
+            </COLLECTION>
+            <SYSTEM TYPE=""Formulae"" NAME=""AccziteBalanceSheetFilter"">
+              $NatureOfGroup = ""Assets"" OR $NatureOfGroup = ""Liabilities""
+            </SYSTEM>",
+
+            // ── Profit & Loss: Income + Expenditure groups with closing balances ──
+            "AccziteProfitLossGroups" => @"
+            <COLLECTION NAME=""AccziteProfitLossGroups"" ISMODIFY=""No"">
+              <TYPE>Group</TYPE>
+              <FETCH>MASTERID, NAME, PARENT, NATUREOFGROUP, OPENINGBALANCE, CLOSINGBALANCE, AFFECTSGROSSPROFIT</FETCH>
+              <FILTER>AcczitePLFilter</FILTER>
+            </COLLECTION>
+            <SYSTEM TYPE=""Formulae"" NAME=""AcczitePLFilter"">
+              $NatureOfGroup = ""Income"" OR $NatureOfGroup = ""Expenditure""
+            </SYSTEM>",
+
+            // ── Banking: Bank account and bank OD ledgers with closing balances ──
+            // Covers both current/savings (Bank Accounts) and overdraft (Bank OD A/c) groups.
+            "AccziteBankingLedgers" => @"
+            <COLLECTION NAME=""AccziteBankingLedgers"" ISMODIFY=""No"">
+              <TYPE>Ledger</TYPE>
+              <FETCH>MASTERID, NAME, PARENT, OPENINGBALANCE, CLOSINGBALANCE, ADDRESS, MAILINGNAME, BANKACNO, IFSCODE</FETCH>
+              <FILTER>AccziteBankFilter</FILTER>
+            </COLLECTION>
+            <SYSTEM TYPE=""Formulae"" NAME=""AccziteBankFilter"">
+              $Parent = ""Bank Accounts"" OR $Parent = ""Bank OD A/c"" OR $Parent = ""Bank Accounts (Under)""
+            </SYSTEM>",
+
+            // ── Stock Summary: All stock items with quantity, rate, value ──
+            // CLOSINGRATE and CLOSINGVALUE are Tally-computed as of the active company period.
+            "AccziteStockSummary" => @"
+            <COLLECTION NAME=""AccziteStockSummary"" ISMODIFY=""No"">
+              <TYPE>StockItem</TYPE>
+              <FETCH>MASTERID, NAME, PARENT, CATEGORY, BASEUNITS, OPENINGBALANCE, CLOSINGBALANCE, CLOSINGRATE, CLOSINGVALUE</FETCH>
+            </COLLECTION>",
+
             // Fallback: request the named collection without a FETCH restriction
             _ => $@"
             <COLLECTION NAME=""{collectionName}"" ISMODIFY=""No"">
@@ -850,13 +792,10 @@ namespace Acczite20.Services
 
         private async Task<bool> HasLoadedCompanyAsync()
         {
-            // ExportCollectionXmlAsync injects the "AccziteVoucherTypes" TDL definition,
-            // so Tally can resolve the collection. ExportCollectionByIdAsync sends a bare
-            // <ID>List of Voucher Types</ID> without TDL — Tally returns a LINEERROR
-            // and ContainsElement("VOUCHERTYPE") returns false, making every check look
-            // like "no company loaded" even when one is.
-            var xml = await ExportCollectionXmlAsync("List of Voucher Types", isCollection: true);
-            return ContainsElement(xml, "VOUCHERTYPE");
+            // Use GetCurrentCompanyNameAsync which has its own self-contained
+            // Collection-style envelope — no dependency on custom TDL or SVCURRENTCOMPANY.
+            var company = await GetCurrentCompanyNameAsync();
+            return !IsUnresolvedCompany(company);
         }
 
         private async Task<string?> ExportCollectionByIdAsync(string collectionId)
@@ -1238,7 +1177,7 @@ namespace Acczite20.Services
             return sb.ToString();
         }
 
-        private string GetStaticVariablesXml(string? fromDate = null, string? toDate = null, string? idList = null)
+        private string GetStaticVariablesXml(string? fromDate = null, string? toDate = null, string? idList = null, bool includeExplode = false)
         {
             var company = SessionManager.Instance.TallyCompanyName?.Trim();
             
@@ -1251,13 +1190,18 @@ namespace Acczite20.Services
             if (!string.IsNullOrEmpty(fromDate)) dateVars += $"<SVFROMDATE>{fromDate}</SVFROMDATE>";
             if (!string.IsNullOrEmpty(toDate)) dateVars += $"<SVTODATE>{toDate}</SVTODATE>";
 
+            var explodeVar = includeExplode ? "<EXPLODEFLAG>Yes</EXPLODEFLAG>" : "";
             var idVars = string.IsNullOrEmpty(idList) ? "" : $"<AccziteIdList>{idList}</AccziteIdList>";
 
+            // Only SVFROMDATE/SVTODATE for export date range.
+            // SVPERIODFROM/SVPERIODTO control the company financial period — overriding
+            // them here resets Tally's active period and breaks $$IsBetween date filtering.
             return $@"
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
         {dateVars}
         {companyVar}
+        {explodeVar}
         {idVars}
       </STATICVARIABLES>";
         }
@@ -1270,8 +1214,8 @@ namespace Acczite20.Services
   <BODY>
     <EXPORTDATA>
       <REQUESTDESC>
-        {GetStaticVariablesXml()}
         <REPORTNAME>{reportName}</REPORTNAME>
+        {GetStaticVariablesXml()}
       </REQUESTDESC>
     </EXPORTDATA>
   </BODY>

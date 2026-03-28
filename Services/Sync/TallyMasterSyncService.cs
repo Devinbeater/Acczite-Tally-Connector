@@ -60,72 +60,135 @@ namespace Acczite20.Services.Sync
         // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // MAIN ENTRY POINT â€” strict order: Groups â†’ Ledgers â†’ VoucherTypes â†’ Stock
         // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        public async Task SyncAllMastersAsync(Guid organizationId)
+        public async Task SyncAllMastersAsync(Guid organizationId, IEnumerable<string>? requestedPhases = null)
         {
             using var scope = _scopeFactory.CreateScope();
             var dbContext = GetContext(scope.ServiceProvider);
             _context = dbContext; // Bind session context for private helper methods
-            _logger.LogInformation("Starting Master Data Sync (Production-Grade)...");
-            _syncMonitor.AddLog("Master Sync: Phase 1 â€” Accounting Groups", "INFO", "MASTERS");
+            
+            var phases = requestedPhases?.ToList() ?? new List<string>();
+            bool syncAll = !phases.Any();
 
-            // â”€â”€â”€ Phase 1: Accounting Groups (MUST be first â€” everything depends on group hierarchy) â”€â”€â”€
-            await SyncAccountingGroupsAsync(organizationId, dbContext);
-            await PopulateDimGroupsAsync(organizationId);
-            _syncMonitor.AddLog($"âœ… Accounting Groups synced and DimGroups populated.", "SUCCESS", "MASTERS");
+            _logger.LogInformation("Starting Master Data Sync (Selective/Incremental)...");
 
-            // Mandatory cooldown between phases - gives Tally GC time to release memory
-            await Task.Delay(3000);
-            // â”€â”€â”€ Phase 2: Ledgers (depends on Groups for parent resolution) â”€â”€â”€
-            _syncMonitor.AddLog("Master Sync: Phase 2 â€” Ledgers", "INFO", "MASTERS");
-            await SyncLedgersAsync(organizationId, dbContext);
-            await PopulateDimLedgersAsync(organizationId);
-            _syncMonitor.AddLog($"âœ… Ledgers synced and DimLedgers populated.", "SUCCESS", "MASTERS");
-
-            await Task.Delay(3000);
-
-            // â”€â”€â”€ Phase 3: Currencies â”€â”€â”€
-            _syncMonitor.AddLog("Master Sync: Phase 3 â€” Currencies", "INFO", "MASTERS");
-            await SyncXmlCollectionAsync<Currency>(organizationId, "List of Currencies", "CURRENCY", element => new Currency
+            // --- Phase 1: Accounting Groups ---
+            if (syncAll || phases.Contains("Groups", StringComparer.OrdinalIgnoreCase) || phases.Contains("Accounting Groups", StringComparer.OrdinalIgnoreCase))
             {
-                OrganizationId = organizationId,
-                Name = element.Element("NAME")?.Value ?? string.Empty,
-                FormalName = element.Element("FORMALNAME")?.Value ?? string.Empty,
-                Symbol = element.Element("MAILINGNAME")?.Value ?? string.Empty
-            });
+                _syncMonitor.AddLog("Master Sync: Phase 1 — Accounting Groups", "INFO", "MASTERS");
+                await SyncAccountingGroupsAsync(organizationId, dbContext);
+                await PopulateDimGroupsAsync(organizationId);
+                _syncMonitor.AddLog($"✅ Accounting Groups synced.", "SUCCESS", "MASTERS");
+                await Task.Delay(2000);
+            }
 
-            await Task.Delay(2000);
-
-            // â”€â”€â”€ Phase 4: Voucher Types â”€â”€â”€
-            _syncMonitor.AddLog("Master Sync: Phase 4 â€” Voucher Types", "INFO", "MASTERS");
-            await SyncXmlCollectionAsync<VoucherType>(organizationId, "List of Voucher Types", "VOUCHERTYPE", element => new VoucherType
+            // --- Phase 2: Ledgers ---
+            if (syncAll || phases.Contains("Ledgers", StringComparer.OrdinalIgnoreCase))
             {
-                OrganizationId = organizationId,
-                Name = element.Element("NAME")?.Value ?? string.Empty,
-                Category = element.Element("PARENT")?.Value ?? string.Empty
-            });
-            await PopulateDimVoucherTypesAsync(organizationId);
+                // Dependency: Ensure groups exist
+                var groupCount = await dbContext.AccountingGroups.CountAsync(g => g.OrganizationId == organizationId);
+                if (groupCount == 0) 
+                {
+                    _syncMonitor.AddLog("Dependency: Syncing Groups before Ledgers...", "INFO", "MASTERS");
+                    await SyncAccountingGroupsAsync(organizationId, dbContext);
+                }
 
-            await Task.Delay(3000);
+                _syncMonitor.AddLog("Master Sync: Phase 2 — Ledgers", "INFO", "MASTERS");
+                await SyncLedgersAsync(organizationId, dbContext);
+                await PopulateDimLedgersAsync(organizationId);
+                _syncMonitor.AddLog($"✅ Ledgers synced.", "SUCCESS", "MASTERS");
+                await Task.Delay(2000);
+            }
 
-            // â”€â”€â”€ Phase 5: Stock Groups + Stock Categories + Stock Items â”€â”€â”€
-            _syncMonitor.AddLog("Master Sync: Phase 5 â€” Stock Masters", "INFO", "MASTERS");
-            await SyncStockGroupsAsync(organizationId, dbContext);
-            await Task.Delay(2000);
-            await SyncStockCategoriesAsync(organizationId, dbContext);
-            await Task.Delay(2000);
-            await SyncStockItemsAsync(organizationId, dbContext);
-            await PopulateDimStockItemsAsync(organizationId);
+            // --- Phase 3: Currencies ---
+            if (syncAll || phases.Contains("Currencies", StringComparer.OrdinalIgnoreCase))
+            {
+                _syncMonitor.AddLog("Master Sync: Phase 3 — Currencies", "INFO", "MASTERS");
+                await SyncXmlCollectionAsync<Currency>(organizationId, "List of Currencies", "CURRENCY", element => new Currency
+                {
+                    OrganizationId = organizationId,
+                    Name = element.Element("NAME")?.Value ?? string.Empty,
+                    FormalName = element.Element("FORMALNAME")?.Value ?? string.Empty,
+                    Symbol = element.Element("MAILINGNAME")?.Value ?? string.Empty
+                });
+                await Task.Delay(1000);
+            }
 
-            // â”€â”€â”€ Phase 6: Auto-map Ledgers to Analytics Categories â”€â”€â”€
-            _syncMonitor.AddLog("Master Sync: Phase 6 â€” Auto-mapping Ledgers", "INFO", "MASTERS");
-            await AutoMapLedgersAsync(organizationId);
+            // --- Phase 4: Voucher Types ---
+            if (syncAll || phases.Contains("Voucher Types", StringComparer.OrdinalIgnoreCase) || phases.Contains("VoucherTypes", StringComparer.OrdinalIgnoreCase))
+            {
+                _syncMonitor.AddLog("Master Sync: Phase 4 — Voucher Types", "INFO", "MASTERS");
+                await SyncXmlCollectionAsync<VoucherType>(organizationId, "VoucherType", "VOUCHERTYPE", true, element => new VoucherType
+                {
+                    OrganizationId = organizationId,
+                    Name = GetValue(element, "NAME"),
+                    Category = GetValue(element, "PARENT")
+                });
+                await PopulateDimVoucherTypesAsync(organizationId);
+                await Task.Delay(1000);
+            }
 
-            // â”€â”€â”€ Phase 7: Integrity Validation â”€â”€â”€
-            _syncMonitor.AddLog("Master Sync: Phase 7 â€” Integrity Validation", "INFO", "MASTERS");
-            await ValidateIntegrityAsync(organizationId);
+            // --- Phase 5: Stock Masters ---
+            if (syncAll || phases.Contains("Stock", StringComparer.OrdinalIgnoreCase) || phases.Contains("Stock Items", StringComparer.OrdinalIgnoreCase))
+            {
+                _syncMonitor.AddLog("Master Sync: Phase 5 — Stock Masters", "INFO", "MASTERS");
+                await SyncStockGroupsAsync(organizationId, dbContext);
+                await Task.Delay(1000);
+                await SyncStockCategoriesAsync(organizationId, dbContext);
+                await Task.Delay(1000);
+                await SyncStockItemsAsync(organizationId, dbContext);
+                await PopulateDimStockItemsAsync(organizationId);
+                await Task.Delay(1000);
+            }
 
-            _logger.LogInformation("Master Data Sync Completed (All Phases).");
-            _syncMonitor.AddLog("âœ… Master Data Sync Complete â€” all phases passed.", "SUCCESS", "MASTERS");
+            // --- Phase 6: Auto-mapping ---
+            if (syncAll || phases.Contains("Mapping", StringComparer.OrdinalIgnoreCase))
+            {
+                _syncMonitor.AddLog("Master Sync: Phase 6 — Auto-mapping Ledgers", "INFO", "MASTERS");
+                await AutoMapLedgersAsync(organizationId);
+                await Task.Delay(1000);
+            }
+
+            // --- Phase 8: Balance Sheet ---
+            if (syncAll || phases.Contains("Balance Sheet", StringComparer.OrdinalIgnoreCase) || phases.Contains("BS", StringComparer.OrdinalIgnoreCase))
+            {
+                _syncMonitor.AddLog("Master Sync: Phase 8 - Balance Sheet Groups", "INFO", "MASTERS");
+                await SyncBalanceSheetGroupsAsync(organizationId, dbContext);
+                await Task.Delay(1000);
+            }
+
+            // --- Phase 9: P&L ---
+            if (syncAll || phases.Contains("Profit & Loss", StringComparer.OrdinalIgnoreCase) || phases.Contains("P&L", StringComparer.OrdinalIgnoreCase) || phases.Contains("PL", StringComparer.OrdinalIgnoreCase))
+            {
+                _syncMonitor.AddLog("Master Sync: Phase 9 - Profit & Loss Groups", "INFO", "MASTERS");
+                await SyncProfitLossGroupsAsync(organizationId, dbContext);
+                await Task.Delay(1000);
+            }
+
+            // --- Phase 10: Banking ---
+            if (syncAll || phases.Contains("Banking", StringComparer.OrdinalIgnoreCase))
+            {
+                _syncMonitor.AddLog("Master Sync: Phase 10 - Banking Ledgers", "INFO", "MASTERS");
+                await SyncBankingLedgersAsync(organizationId, dbContext);
+                await Task.Delay(1000);
+            }
+
+            // --- Phase 11: Stock Summary ---
+            if (syncAll || phases.Contains("Stock Summary", StringComparer.OrdinalIgnoreCase))
+            {
+                _syncMonitor.AddLog("Master Sync: Phase 11 - Stock Summary", "INFO", "MASTERS");
+                await SyncStockSummaryAsync(organizationId, dbContext);
+                await Task.Delay(1000);
+            }
+
+            // --- Phase 7: Integrity Validation ---
+            if (syncAll || phases.Contains("Validation", StringComparer.OrdinalIgnoreCase))
+            {
+                _syncMonitor.AddLog("Master Sync: Phase 7 — Integrity Validation", "INFO", "MASTERS");
+                await ValidateIntegrityAsync(organizationId);
+            }
+
+            _logger.LogInformation("Master Data Sync Completed.");
+            _syncMonitor.AddLog("✅ Master Data Sync Cycle Finished.", "SUCCESS", "MASTERS");
         }
 
         public async Task<MasterIntegrityResult> VerifyMasterDataIntegrityAsync(Guid organizationId)
@@ -190,7 +253,9 @@ namespace Acczite20.Services.Sync
                     throw new InvalidOperationException("Tally returned malformed XML for groups.");
                 }
                 
-                var nodes = GetCollectionNodes(doc, "GROUP", "PARENT", "NATUREOFGROUP", "ISPRIMARY");
+                var nodes = doc.Descendants()
+                    .Where(x => x.Name.LocalName.Equals("GROUP", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
                 
                 if (nodes.Count == 0)
                 {
@@ -399,7 +464,9 @@ namespace Acczite20.Services.Sync
                     throw new InvalidOperationException("Tally returned malformed XML for ledgers.", ex);
                 }
 
-                var nodes = GetCollectionNodes(doc, "LEDGER"); // Headers only
+                var nodes = doc.Descendants()
+                    .Where(x => x.Name.LocalName.Equals("LEDGER", StringComparison.OrdinalIgnoreCase))
+                    .ToList(); // Headers only
                 if (nodes.Count == 0) return;
 
                 _syncMonitor.AddLog($"Fetched {nodes.Count} Ledger Headers. Syncing database...", "INFO", "MASTERS");
@@ -525,7 +592,9 @@ namespace Acczite20.Services.Sync
                             using var dReader = System.Xml.XmlReader.Create(sReader, dSettings);
                             var dDoc = XDocument.Load(dReader);
                             
-                            var dNodes = GetCollectionNodes(dDoc, "LEDGER");
+                            var dNodes = dDoc.Descendants()
+                    .Where(x => x.Name.LocalName.Equals("LEDGER", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
                             
                             foreach (var dNode in dNodes)
                             {
@@ -624,7 +693,9 @@ namespace Acczite20.Services.Sync
                 using var stringReader = new System.IO.StringReader(response);
                 using var reader = System.Xml.XmlReader.Create(stringReader, settings);
                 var doc = XDocument.Load(reader);
-                var nodes = GetCollectionNodes(doc, "LEDGER", "PARENT", "MAILINGNAME", "GSTIN");
+                var nodes = doc.Descendants()
+                    .Where(x => x.Name.LocalName.Equals("LEDGER", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
                 _syncMonitor.AddLog($"Enriching {nodes.Count} ledgers with GST details from XML 'List of Ledgers' collection.", "INFO", "MASTERS");
 
                 var existingLedgers = await dbContext.Ledgers
@@ -1088,37 +1159,7 @@ namespace Acczite20.Services.Sync
         // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         // UTILITY METHODS
         // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        private static string GetTallyValue(XElement node, string propertyName)
-        {
-            // Case-Insensitive Element and Attribute Probe (Normalization Layer)
-            return node.Element(propertyName)?.Value 
-                ?? node.Attribute(propertyName)?.Value 
-                ?? node.Element(propertyName.ToUpper())?.Value 
-                ?? node.Attribute(propertyName.ToUpper())?.Value 
-                ?? node.Element(propertyName.ToLower())?.Value
-                ?? string.Empty;
-        }
 
-        private static List<XElement> GetCollectionNodes(XDocument doc, string primaryNodeName, params string[] markerFields)
-        {
-            var directNodes = doc.Descendants()
-                .Where(x => x.Name.LocalName.Equals(primaryNodeName, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-
-            if (directNodes.Count > 0)
-            {
-                return directNodes;
-            }
-
-            return doc.Descendants()
-                .Where(x =>
-                    x.Name.LocalName.EndsWith(".LIST", StringComparison.OrdinalIgnoreCase)
-                    && x.Elements().Any(e => e.Name.LocalName.Equals("NAME", StringComparison.OrdinalIgnoreCase))
-                    && (markerFields.Length == 0
-                        || markerFields.Any(marker =>
-                            x.Elements().Any(e => e.Name.LocalName.Equals(marker, StringComparison.OrdinalIgnoreCase)))))
-                .ToList();
-        }
 
         private string ResolveRootGroup(string name, string parent, List<AccountingGroup> allGroups)
         {
@@ -1139,17 +1180,21 @@ namespace Acczite20.Services.Sync
             return currentName;
         }
 
+        private Task SyncXmlCollectionAsync<TEntity>(Guid organizationId, string reportName, string xmlNodeName, bool isCollection, Func<XElement, TEntity> mappingFunction)
+            where TEntity : BaseEntity =>
+            SyncXmlCollectionAsync(organizationId, reportName, xmlNodeName, isCollection, RequireContext(), mappingFunction);
+
         private Task SyncXmlCollectionAsync<TEntity>(Guid organizationId, string reportName, string xmlNodeName, Func<XElement, TEntity> mappingFunction)
             where TEntity : BaseEntity =>
-            SyncXmlCollectionAsync(organizationId, reportName, xmlNodeName, RequireContext(), mappingFunction);
+            SyncXmlCollectionAsync(organizationId, reportName, xmlNodeName, true, RequireContext(), mappingFunction);
 
-        private async Task SyncXmlCollectionAsync<TEntity>(Guid organizationId, string reportName, string xmlNodeName, AppDbContext dbContext, Func<XElement, TEntity> mappingFunction) where TEntity : BaseEntity
+        private async Task SyncXmlCollectionAsync<TEntity>(Guid organizationId, string reportName, string xmlNodeName, bool isCollection, AppDbContext dbContext, Func<XElement, TEntity> mappingFunction) where TEntity : BaseEntity
         {
-            _logger.LogInformation($"Syncing {reportName} via XML...");
+            _logger.LogInformation($"Syncing {reportName} via XML (isCollection: {isCollection})...");
             
             try
             {
-                var response = await _xmlService.ExportCollectionXmlAsync(reportName, isCollection: false);
+                var response = await _xmlService.ExportCollectionXmlAsync(reportName, isCollection: isCollection);
                 if (string.IsNullOrWhiteSpace(response)) return;
  
                 var settings = new System.Xml.XmlReaderSettings { CheckCharacters = false };
@@ -1157,7 +1202,9 @@ namespace Acczite20.Services.Sync
                 using var reader = System.Xml.XmlReader.Create(stringReader, settings);
                 var doc = XDocument.Load(reader);
                 
-                var nodes = doc.Descendants(xmlNodeName).ToList();
+                var nodes = doc.Descendants()
+                    .Where(x => x.Name.LocalName.Equals(xmlNodeName, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
                 
                 var entities = new List<TEntity>();
                 foreach (var node in nodes)
@@ -1248,6 +1295,223 @@ namespace Acczite20.Services.Sync
             {
                 _logger.LogError($"Error syncing {reportName}: {ex.Message}");
                 _syncMonitor.AddLog($"âŒ {reportName} sync failed: {ex.Message}", "ERROR", "MASTERS");
+            }
+        }
+        private static string GetValue(XElement el, string name)
+        {
+            return el.Attribute(name)?.Value
+                ?? el.Element(name)?.Value
+                ?? string.Empty;
+        }
+
+        private static string GetTallyValue(XElement element, string name) => GetValue(element, name);
+
+        // ══════════════════════════════════════════════════════════════
+        // PHASE 8: BALANCE SHEET GROUPS (Assets + Liabilities closing balances)
+        // ══════════════════════════════════════════════════════════════
+        private async Task SyncBalanceSheetGroupsAsync(Guid orgId, AppDbContext dbContext)
+        {
+            try
+            {
+                var response = await _xmlService.ExportCollectionXmlAsync("AccziteBalanceSheetGroups", isCollection: true);
+                if (string.IsNullOrWhiteSpace(response))
+                {
+                    _syncMonitor.AddLog("⚠ Balance Sheet: empty response from Tally.", "WARNING", "MASTERS");
+                    return;
+                }
+                var doc = XDocument.Parse(response);
+                var nodes = doc.Descendants()
+                    .Where(x => x.Name.LocalName.Equals("GROUP", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                var existingGroups = await dbContext.AccountingGroups
+                    .Where(g => g.OrganizationId == orgId)
+                    .ToDictionaryAsync(g => g.Name, StringComparer.OrdinalIgnoreCase);
+
+                int updated = 0;
+                foreach (var node in nodes)
+                {
+                    var name = GetValue(node, "NAME");
+                    decimal.TryParse(GetValue(node, "CLOSINGBALANCE").Replace(",", "").Trim(), out var closing);
+                    if (existingGroups.TryGetValue(name, out var group))
+                    {
+                        group.ClosingBalance = closing;
+                        group.Parent = GetValue(node, "PARENT");
+                        group.NatureOfGroup = GetValue(node, "NATUREOFGROUP");
+                        group.IsAddable = GetValue(node, "ISADDABLE").Equals("Yes", StringComparison.OrdinalIgnoreCase);
+                        group.UpdatedAt = DateTimeOffset.UtcNow;
+                        updated++;
+                    }
+                }
+                await dbContext.SaveChangesAsync();
+                _syncMonitor.AddLog($"✅ Balance Sheet: {updated} group balances updated.", "SUCCESS", "MASTERS");
+            }
+            catch (Exception ex)
+            {
+                _syncMonitor.AddLog($"❌ Balance Sheet sync failed: {ex.Message}", "ERROR", "MASTERS");
+                _logger.LogWarning(ex, "Balance Sheet group sync failed.");
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        // PHASE 9: PROFIT & LOSS GROUPS (Income + Expenditure closing balances)
+        // ══════════════════════════════════════════════════════════════
+        private async Task SyncProfitLossGroupsAsync(Guid orgId, AppDbContext dbContext)
+        {
+            try
+            {
+                var response = await _xmlService.ExportCollectionXmlAsync("AccziteProfitLossGroups", isCollection: true);
+                if (string.IsNullOrWhiteSpace(response))
+                {
+                    _syncMonitor.AddLog("⚠ P&L: empty response from Tally.", "WARNING", "MASTERS");
+                    return;
+                }
+                var doc = XDocument.Parse(response);
+                var nodes = doc.Descendants()
+                    .Where(x => x.Name.LocalName.Equals("GROUP", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                var existingGroups = await dbContext.AccountingGroups
+                    .Where(g => g.OrganizationId == orgId)
+                    .ToDictionaryAsync(g => g.Name, StringComparer.OrdinalIgnoreCase);
+
+                int updated = 0;
+                foreach (var node in nodes)
+                {
+                    var name = GetValue(node, "NAME");
+                    decimal.TryParse(GetValue(node, "CLOSINGBALANCE").Replace(",", "").Trim(), out var closing);
+                    if (existingGroups.TryGetValue(name, out var group))
+                    {
+                        group.ClosingBalance = closing;
+                        group.Parent = GetValue(node, "PARENT");
+                        group.NatureOfGroup = GetValue(node, "NATUREOFGROUP");
+                        group.AffectsGrossProfit = GetValue(node, "AFFECTSGROSSPROFIT").Equals("Yes", StringComparison.OrdinalIgnoreCase);
+                        group.UpdatedAt = DateTimeOffset.UtcNow;
+                        updated++;
+                    }
+                }
+                await dbContext.SaveChangesAsync();
+                _syncMonitor.AddLog($"✅ P&L: {updated} group balances updated.", "SUCCESS", "MASTERS");
+            }
+            catch (Exception ex)
+            {
+                _syncMonitor.AddLog($"❌ P&L group sync failed: {ex.Message}", "ERROR", "MASTERS");
+                _logger.LogWarning(ex, "P&L group sync failed.");
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        // PHASE 10: BANKING LEDGERS (Bank Accounts + Bank OD closing balances)
+        // ══════════════════════════════════════════════════════════════
+        private async Task SyncBankingLedgersAsync(Guid orgId, AppDbContext dbContext)
+        {
+            try
+            {
+                var response = await _xmlService.ExportCollectionXmlAsync("AccziteBankingLedgers", isCollection: true);
+                if (string.IsNullOrWhiteSpace(response))
+                {
+                    _syncMonitor.AddLog("⚠ Banking: No bank ledgers found in Tally.", "WARNING", "MASTERS");
+                    return;
+                }
+                _syncMonitor.AddLog("🏦 Extracting Ground-Truth Banking Balances...", "INFO", "MASTERS");
+                var doc = XDocument.Parse(response);
+                var nodes = doc.Descendants()
+                    .Where(x => x.Name.LocalName.Equals("LEDGER", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                var existingLedgers = await dbContext.Ledgers
+                    .Where(l => l.OrganizationId == orgId)
+                    .ToDictionaryAsync(l => l.Name, StringComparer.OrdinalIgnoreCase);
+
+                int updated = 0, added = 0;
+                foreach (var node in nodes)
+                {
+                    var name = GetValue(node, "NAME");
+                    decimal.TryParse(GetValue(node, "CLOSINGBALANCE").Replace(",", "").Trim(), out var closing);
+                    decimal.TryParse(GetValue(node, "OPENINGBALANCE").Replace(",", "").Trim(), out var opening);
+
+                    if (existingLedgers.TryGetValue(name, out var ledger))
+                    {
+                        ledger.ClosingBalance = closing;
+                        ledger.UpdatedAt = DateTimeOffset.UtcNow;
+                        updated++;
+                    }
+                    else
+                    {
+                        // Bank ledger not yet in DB — add it
+                        dbContext.Ledgers.Add(new Ledger
+                        {
+                            Id = Guid.NewGuid(),
+                            OrganizationId = orgId,
+                            Name = name,
+                            ParentGroup = GetValue(node, "PARENT"),
+                            OpeningBalance = opening,
+                            ClosingBalance = closing,
+                            Address = GetValue(node, "ADDRESS"),
+                            MailingName = GetValue(node, "MAILINGNAME"),
+                            TallyMasterId = GetValue(node, "MASTERID"),
+                            CreatedAt = DateTimeOffset.UtcNow,
+                            UpdatedAt = DateTimeOffset.UtcNow
+                        });
+                        added++;
+                    }
+                }
+                await dbContext.SaveChangesAsync();
+                _syncMonitor.AddLog($"✅ Banking: {updated} updated, {added} new bank ledgers. Total: {nodes.Count}.", "SUCCESS", "MASTERS");
+            }
+            catch (Exception ex)
+            {
+                _syncMonitor.AddLog($"❌ Banking ledger sync failed: {ex.Message}", "ERROR", "MASTERS");
+                _logger.LogWarning(ex, "Banking ledger sync failed.");
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        // PHASE 11: STOCK SUMMARY (closing rate + value for all stock items)
+        // ══════════════════════════════════════════════════════════════
+        private async Task SyncStockSummaryAsync(Guid orgId, AppDbContext dbContext)
+        {
+            try
+            {
+                var response = await _xmlService.ExportCollectionXmlAsync("AccziteStockSummary", isCollection: true);
+                if (string.IsNullOrWhiteSpace(response))
+                {
+                    _syncMonitor.AddLog("⚠ Stock Summary: empty response from Tally.", "WARNING", "MASTERS");
+                    return;
+                }
+                var doc = XDocument.Parse(response);
+                var nodes = doc.Descendants()
+                    .Where(x => x.Name.LocalName.Equals("STOCKITEM", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                var existingItems = await dbContext.StockItems
+                    .Where(s => s.OrganizationId == orgId)
+                    .ToDictionaryAsync(s => s.Name, StringComparer.OrdinalIgnoreCase);
+
+                int updated = 0;
+                foreach (var node in nodes)
+                {
+                    var name = GetValue(node, "NAME");
+                    decimal.TryParse(GetValue(node, "CLOSINGBALANCE").Replace(",", "").Trim(), out var qty);
+                    decimal.TryParse(GetValue(node, "CLOSINGRATE").Replace(",", "").Trim(), out var rate);
+                    decimal.TryParse(GetValue(node, "CLOSINGVALUE").Replace(",", "").Trim(), out var value);
+
+                    if (existingItems.TryGetValue(name, out var item))
+                    {
+                        item.ClosingBalance = qty;
+                        item.ClosingRate = rate;
+                        item.ClosingValue = value == 0 && rate > 0 ? qty * rate : value;
+                        item.UpdatedAt = DateTimeOffset.UtcNow;
+                        updated++;
+                    }
+                }
+                await dbContext.SaveChangesAsync();
+                _syncMonitor.AddLog($"✅ Stock Summary: {updated} items updated with closing rate/value.", "SUCCESS", "MASTERS");
+            }
+            catch (Exception ex)
+            {
+                _syncMonitor.AddLog($"❌ Stock Summary sync failed: {ex.Message}", "ERROR", "MASTERS");
+                _logger.LogWarning(ex, "Stock Summary sync failed.");
             }
         }
     }

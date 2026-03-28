@@ -80,10 +80,16 @@
 
             <!-- 4. Attention Needed (Alerts) -->
             <Border Grid.Row="3" Background="{StaticResource BaseWhite}" CornerRadius="15" Padding="25" Effect="{StaticResource CardShadow}">
-                <DockPanel>
+                <DockPanel LastChildFill="False">
                     <TextBlock DockPanel.Dock="Top" Text="Smart Insights &amp; Alerts" FontSize="20" FontWeight="Bold" Margin="0,0,0,15" Foreground="{StaticResource CharcoalText}"/>
-                    
-                    <ItemsControl x:Name="AlertsList">
+
+                    <Grid x:Name="EmptyAlertsPlaceholder" DockPanel.Dock="Top" Height="100" Visibility="Collapsed">
+                        <TextBlock Text="Everything looks good! No critical alerts at the moment." 
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" 
+                                   Foreground="{StaticResource GrayText}" FontStyle="Italic"/>
+                    </Grid>
+
+                    <ItemsControl x:Name="AlertsList" DockPanel.Dock="Top">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <Border BorderBrush="#E5E7EB" BorderThickness="0,0,0,1" Padding="0,12">
@@ -110,12 +116,14 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+
                     <Button DockPanel.Dock="Bottom" 
                             Content="View Full Activity Timeline →" 
                             Style="{StaticResource PrimaryButtonStyle}" 
                             HorizontalAlignment="Center" 
                             Click="ViewTimeline_Click"
-                            Margin="0,20,0,0"/>
+                            Margin="0,20,0,0"
+                            Padding="20,8"/>
                 </DockPanel>
             </Border>
         </Grid>

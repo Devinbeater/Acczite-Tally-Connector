@@ -62,6 +62,11 @@ namespace Acczite20.Services.Sync
         public ObservableCollection<EntitySyncStatus> EntitySyncDetails { get; } = new ObservableCollection<EntitySyncStatus>();
         public ObservableCollection<FailedSyncRecord> DeadLetterQueue { get; } = new ObservableCollection<FailedSyncRecord>();
 
+        private CancellationTokenSource? _metricsCts;
+        private DateTime _runStartTime;
+        private int _lastTotalSynced;
+        private DateTime _lastMetricUpdate;
+
         private int _totalErrors;
         public int TotalErrors
         {
@@ -343,17 +348,56 @@ namespace Acczite20.Services.Sync
 
         public void BeginRun(string title, string description)
         {
-            TotalRecordsSynced = 0;
+            _runStartTime = DateTime.Now;
+            _lastTotalSynced = 0;
+            _lastMetricUpdate = DateTime.Now;
             CurrentBatchVouchers = 0;
             CurrentBatchLedgerEntries = 0;
             CurrentBatchInventoryEntries = 0;
             VouchersPerSecond = 0;
-            MemoryUsage = "0 MB";
+            MemoryUsage = GetCurrentMemoryUsage();
             CurrentStage = title;
             CurrentStageDetail = description;
             ProgressPercent = 0;
             IsProgressIndeterminate = true;
             IsSyncing = true;
+
+            StartBackgroundMetrics();
+        }
+
+        private void StartBackgroundMetrics()
+        {
+            _metricsCts?.Cancel();
+            _metricsCts = new CancellationTokenSource();
+            var token = _metricsCts.Token;
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    while (!token.IsCancellationRequested && IsSyncing)
+                    {
+                        UpdateMemoryOnly();
+                        await Task.Delay(2000, token);
+                    }
+                }
+                catch (OperationCanceledException) { }
+            }, token);
+        }
+
+        private void UpdateMemoryOnly()
+        {
+            MemoryUsage = GetCurrentMemoryUsage();
+        }
+
+        private string GetCurrentMemoryUsage()
+        {
+            try
+            {
+                _currentProcess.Refresh();
+                return $"{_currentProcess.PrivateMemorySize64 / 1024 / 1024} MB";
+            }
+            catch { return "0 MB"; }
         }
 
         public void SetStage(string stage, string detail, double progressPercent, bool isIndeterminate = false)
@@ -385,6 +429,7 @@ namespace Acczite20.Services.Sync
 
         public void CompleteRun(string detail)
         {
+            _metricsCts?.Cancel();
             IsProgressIndeterminate = false;
             ProgressPercent = 100;
             CurrentStage = "Sync complete";
@@ -395,6 +440,7 @@ namespace Acczite20.Services.Sync
 
         public void FailRun(string detail)
         {
+            _metricsCts?.Cancel();
             IsProgressIndeterminate = false;
             ProgressPercent = Math.Max(ProgressPercent, 15);
             CurrentStage = "Sync failed";
@@ -410,13 +456,36 @@ namespace Acczite20.Services.Sync
             IsSyncing = false;
         }
 
+        private readonly System.Collections.Generic.Queue<double> _rateSamples = new(10);
+
         public void UpdateMetrics(int totalSynced, double elapsedSeconds)
         {
-            if (elapsedSeconds > 0)
-                VouchersPerSecond = Math.Round(totalSynced / elapsedSeconds, 0);
+            var now = DateTime.Now;
+            var timeSinceLastUpdate = (now - _lastMetricUpdate).TotalSeconds;
             
-            _currentProcess.Refresh(); // Refresh cached OS counters before reading
-            MemoryUsage = $"{_currentProcess.PrivateMemorySize64 / 1024 / 1024} MB";
+            if (timeSinceLastUpdate >= 1.0)
+            {
+                var batchSize = totalSynced - _lastTotalSynced;
+                if (batchSize >= 0)
+                {
+                    double instantRate = batchSize / timeSinceLastUpdate;
+                    
+                    // Simple rolling average
+                    _rateSamples.Enqueue(instantRate);
+                    if (_rateSamples.Count > 5) _rateSamples.Dequeue();
+                    
+                    VouchersPerSecond = Math.Round(_rateSamples.Average(), 1);
+                }
+                
+                _lastTotalSynced = totalSynced;
+                _lastMetricUpdate = now;
+            }
+            else if (VouchersPerSecond == 0 && elapsedSeconds > 0)
+            {
+                VouchersPerSecond = Math.Round(totalSynced / elapsedSeconds, 1);
+            }
+            
+            MemoryUsage = GetCurrentMemoryUsage();
         }
 
         public void AddLog(string message, string level = "INFO", string module = "SYSTEM")

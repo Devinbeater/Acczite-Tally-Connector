@@ -1,4 +1,4 @@
-﻿// Updated 1: SelectableItem.cs
+// Updated 1: SelectableItem.cs
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
@@ -39,6 +39,13 @@ namespace Acczite20.Models
         {
             get => _matchedField;
             set => SetProperty(ref _matchedField, value);
+        }
+
+        private int _count;
+        public int Count
+        {
+            get => _count;
+            set => SetProperty(ref _count, value);
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;

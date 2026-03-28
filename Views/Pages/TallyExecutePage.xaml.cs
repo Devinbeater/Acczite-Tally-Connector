@@ -16,6 +16,7 @@ namespace Acczite20.Views.Pages
     public partial class TallyExecutePage : Page
     {
         private readonly List<string> _selectedTables;
+        private readonly List<string> _selectedTallyCollections;
         private readonly INavigationService _navigationService;
         private readonly SyncStateMonitor _syncMonitor;
         private readonly TallySyncOrchestrator _orchestrator;
@@ -30,6 +31,7 @@ namespace Acczite20.Views.Pages
             InitializeComponent();
 
             _selectedTables = selectedTables ?? new List<string>();
+            _selectedTallyCollections = selectedFields ?? new List<string>();
 
             var serviceProvider = ((App)Application.Current).ServiceProvider;
             _syncMonitor = serviceProvider.GetRequiredService<SyncStateMonitor>();
@@ -206,24 +208,21 @@ namespace Acczite20.Views.Pages
                 SyncProgressPanel.Visibility = Visibility.Visible;
                 RefreshExecutionUi();
 
-                MessageBox.Show(
-                    "A sync is already running. Live progress is shown below.",
+                await CustomDialog.ShowAsync(
                     "Sync In Progress",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
+                    "A synchronization is already running. Live progress is shown below.",
+                    CustomDialog.DialogType.Info);
                 return;
             }
 
             try
             {
-                bool isMongo = string.Equals(SessionManager.Instance.SelectedDatabaseType, "MongoDB", StringComparison.OrdinalIgnoreCase);
-                if (SessionManager.Instance.OrganizationId == Guid.Empty && (!isMongo || string.IsNullOrWhiteSpace(SessionManager.Instance.OrganizationObjectId)))
+                if (SessionManager.Instance.OrganizationId == Guid.Empty && string.IsNullOrWhiteSpace(SessionManager.Instance.OrganizationObjectId))
                 {
-                    MessageBox.Show(
-                        "Please select a valid organization before starting a synchronization.",
+                    await CustomDialog.ShowAsync(
                         "Organization Required",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Warning);
+                        "Please select a valid organization before starting a synchronization.",
+                        CustomDialog.DialogType.Warning);
                     return;
                 }
 
@@ -247,7 +246,7 @@ namespace Acczite20.Views.Pages
                 _syncCts = new CancellationTokenSource();
 
                 RefreshExecutionUi();
-                await _orchestrator.RunFullSyncAsync(SessionManager.Instance.OrganizationId, fromDate, toDate, _syncCts.Token);
+                await _orchestrator.RunFullSyncAsync(SessionManager.Instance.OrganizationId, fromDate, toDate, _syncCts.Token, _selectedTallyCollections);
                 RefreshExecutionUi();
 
                 var dialog = new TallySyncCompleteDialog
@@ -260,11 +259,10 @@ namespace Acczite20.Views.Pages
             catch (OperationCanceledException)
             {
                 RefreshExecutionUi();
-                MessageBox.Show(
-                    "Synchronization was cancelled before completion.",
+                await CustomDialog.ShowAsync(
                     "Sync Cancelled",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
+                    "Synchronization was cancelled before completion.",
+                    CustomDialog.DialogType.Info);
             }
             catch (Exception ex)
             {
@@ -275,11 +273,10 @@ namespace Acczite20.Views.Pages
                     ? "Synchronization failed.\n\n"
                     : "An unexpected error occurred while running the sync.\n\n";
 
-                MessageBox.Show(
-                    messagePrefix + ex.Message,
+                await CustomDialog.ShowAsync(
                     isExpectedSyncFailure ? "Synchronization Failed" : "Execution Error",
-                    MessageBoxButton.OK,
-                    isExpectedSyncFailure ? MessageBoxImage.Warning : MessageBoxImage.Error);
+                    messagePrefix + ex.Message,
+                    isExpectedSyncFailure ? CustomDialog.DialogType.Warning : CustomDialog.DialogType.Error);
             }
             finally
             {
@@ -306,6 +303,30 @@ namespace Acczite20.Views.Pages
         {
             if (_syncMonitor == null) return;
             _syncMonitor.TriggerCooldown = true;
+        }
+
+        private async void ContinuousSyncToggle_Toggled(object sender, RoutedEventArgs e)
+        {
+            if (ContinuousSyncToggle.IsOn)
+            {
+                if (SessionManager.Instance.OrganizationId == Guid.Empty && string.IsNullOrWhiteSpace(SessionManager.Instance.OrganizationObjectId))
+                {
+                    ContinuousSyncToggle.IsOn = false;
+                    await CustomDialog.ShowAsync("Organization Required", "Please select an organization first.", CustomDialog.DialogType.Warning);
+                    return;
+                }
+                
+                var orgId = SessionManager.Instance.OrganizationId;
+                // If it's a MongoDB org, we still pass Guid.Empty for now, but the UI won't block it if ObjectId is present.
+                // NOTE: Orchestrator might need update to handle string IDs if SQL sync is required for Mongo orgs.
+                _orchestrator.StartContinuousSync(orgId, _selectedTallyCollections);
+                _syncMonitor.AddLog("Continuous background sync enabled.", "INFO", "SYSTEM");
+            }
+            else
+            {
+                _orchestrator.StopContinuousSync();
+                _syncMonitor.AddLog("Continuous background sync disabled.", "INFO", "SYSTEM");
+            }
         }
     }
 }
