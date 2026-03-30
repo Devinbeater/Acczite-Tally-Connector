@@ -48,6 +48,14 @@ namespace Acczite20.Services.Sync
         }
     }
 
+    public enum SyncRunResult
+    {
+        Started,
+        Ignored,
+        Failed,
+        Cancelled
+    }
+
     public class TallySyncOrchestrator
     {
         private readonly ILogger<TallySyncOrchestrator> _logger;
@@ -70,8 +78,6 @@ namespace Acczite20.Services.Sync
         public bool IsSyncRunning => _isSyncRunning;
         public bool IsContinuousSyncRunning => _continuousSyncCts != null;
         private MasterDataCache? _cache;
-        private string? _lastMasterIdInCheckpoint;
-        private long _lastBatchLatencyMs = 0;
         private const int ProbeMinSegments = 5;
         private const int ProbeMaxSegments = 12;
         private const int ProbeDaysPerSegment = 30;
@@ -105,6 +111,7 @@ namespace Acczite20.Services.Sync
                 _logger.LogWarning($"Failed to write to DeadLetter table: {ex.Message}");
             }
         }
+
 
         public TallySyncOrchestrator(
             ILogger<TallySyncOrchestrator> logger,
@@ -164,150 +171,209 @@ namespace Acczite20.Services.Sync
             }
         }
 
-        public async Task RunSyncCycleAsync(CancellationToken ct)
-        {
-            var lockKey = $"sync:{SessionManager.Instance.OrganizationId}";
-            if (await _lockProvider.AcquireLockAsync(lockKey, TimeSpan.Zero, ct))
-            {
-                try
-                {
-                    await RunSyncCycleInternalAsync(ct);
-                }
-                finally
-                {
-                    await _lockProvider.ReleaseLockAsync(lockKey);
-                }
-            }
-        }
 
-        private async Task RunSyncCycleInternalAsync(CancellationToken ct, DateTimeOffset? fromDate = null, DateTimeOffset? toDate = null, IEnumerable<string>? selectedCollections = null, SyncOwner owner = SyncOwner.HostedService)
+
+        public async Task<SyncRunResult> RunSyncCycleInternalAsync(Guid runId, CancellationToken ct, DateTimeOffset? fromDate = null, DateTimeOffset? toDate = null, IEnumerable<string>? selectedCollections = null, SyncOwner owner = SyncOwner.HostedService)
         {
-            if (_isSyncRunning)
+            var orgId = SessionManager.Instance.OrganizationId;
+            var orgObjectId = SessionManager.Instance.OrganizationObjectId;
+
+            if (orgId == Guid.Empty && string.IsNullOrEmpty(orgObjectId))
             {
-                _syncMonitor.AddLog("⚠ A synchronization cycle is already active. Ignoring duplicate request.", "WARNING", "CONCURRENCY");
-                return;
+                _syncMonitor.AddLog("Sync aborted: no authenticated organization. Please log in first.", "ERROR", "ORCHESTRATOR");
+                return SyncRunResult.Ignored;
+            }
+
+            if (!_control.TryStart(orgId, owner, runId))
+            {
+                AddLog(orgId, runId, $"⚠ A synchronization cycle is already active in Control Service ({owner}). Ignoring duplicate request.", "WARNING", "CONCURRENCY");
+                return SyncRunResult.Ignored;
             }
 
             _isSyncRunning = true;
-            _currentRunId = Guid.NewGuid();
-            var orgId = SessionManager.Instance.OrganizationId;
+            _currentRunId = runId;
             
-            bool isFullRun = selectedCollections == null || !selectedCollections.Any();
-            
-            // Logic to determine what needs syncing
-            bool syncManagers = isFullRun || selectedCollections.Any(c => 
-                c.Contains("Ledger", StringComparison.OrdinalIgnoreCase) || 
-                c.Contains("Group", StringComparison.OrdinalIgnoreCase) || 
-                c.Contains("Voucher Type", StringComparison.OrdinalIgnoreCase) || 
-                c.Contains("Currency", StringComparison.OrdinalIgnoreCase) ||
-                c.Contains("Stock", StringComparison.OrdinalIgnoreCase));
-
-            bool syncVouchers = isFullRun || selectedCollections.Any(c => 
-                c.Equals("Voucher", StringComparison.OrdinalIgnoreCase) || 
-                c.Equals("Day Book", StringComparison.OrdinalIgnoreCase) || 
-                c.Equals("Daybook", StringComparison.OrdinalIgnoreCase));
-
-            if (!_control.TryStart(orgId, owner))
-            {
-                _syncMonitor.AddLog($"⚠ A synchronization cycle is already active in Control Service ({owner}). Ignoring.", "WARNING", "CONCURRENCY");
-                return;
-            }
-
             var state = _control.GetState(orgId);
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, state.Cts.Token);
             var effectiveCt = linkedCts.Token;
 
-            if (!_syncMonitor.IsSyncing)
-                _syncMonitor.BeginRun("Starting sync...", $"Mode: {(isFullRun ? "Full" : "Selective")}");
-            else
-                _syncMonitor.SetStage("Initializing sync", $"Mode: {(isFullRun ? "Full" : "Selective")}", 5, true);
-
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-            try
+            try 
             {
-                _syncMonitor.AddLog($"🚀 Sync Cycle Started.", "INFO");
+                _control.UpdateHeartbeat(orgId, runId, "Initializing");
+                
+                bool isFullRun = selectedCollections == null || !selectedCollections.Any();
+                string modeName = isFullRun ? "Full organization dataset" : "Selective collections";
+                AddLog(orgId, runId, $"🔍 Initializing Sync Cycle: {modeName}", "INFO", "ORCHESTRATOR");
+                AddLog(orgId, runId, $"⚙️ Configuration: Org={orgId}, Mode={_syncMonitor.SyncMode}, Owner={owner}", "INFO", "CONFIG");
+
+                // Logic to determine what needs syncing
+                bool syncManagers = isFullRun || (selectedCollections?.Any(c => 
+                    c != null && (
+                        c.Contains("Ledger", StringComparison.OrdinalIgnoreCase) || 
+                        c.Contains("Group", StringComparison.OrdinalIgnoreCase) || 
+                        c.Contains("Voucher Type", StringComparison.OrdinalIgnoreCase) || 
+                        c.Contains("Currency", StringComparison.OrdinalIgnoreCase) ||
+                        c.Contains("Stock", StringComparison.OrdinalIgnoreCase))) == true);
+
+                bool syncVouchers = isFullRun || (selectedCollections?.Any(c => 
+                    c != null && (
+                        c.Equals("Voucher", StringComparison.OrdinalIgnoreCase) || 
+                        c.Equals("Day Book", StringComparison.OrdinalIgnoreCase) || 
+                        c.Equals("Daybook", StringComparison.OrdinalIgnoreCase))) == true);
+
+                if (!_syncMonitor.IsSyncing)
+                    _syncMonitor.BeginRun("Starting sync...", $"Mode: {(isFullRun ? "Full" : "Selective")}");
+                else
+                    _syncMonitor.SetStage("Initializing sync", $"Mode: {(isFullRun ? "Full" : "Selective")}", 5, true);
+
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+                Guard(orgId, runId, effectiveCt);
+
+                // Transition from Starting to Running in Control Service after first successful Guard
+                state.Status = SyncLifecycle.Running;
+                _control.UpdateHeartbeat(orgId, runId, "Running");
+
+                AddLog(orgId, runId, $"🚀 Sync Cycle Started.", "INFO");
                 
                 var status = await _tallyService.DetectTallyStatusAsync();
+                AddLog(orgId, runId, $"🔍 Tally Connectivity: {status}", status == TallyConnectionStatus.RunningWithCompany ? "SUCCESS" : "ERROR", "TALLY");
+                
                 if (status != TallyConnectionStatus.RunningWithCompany)
                 {
-                    _syncMonitor.FailRun("Tally or Company not ready. Ensure Tally is open with the correct company.");
-                    return;
+                    var errorMsg = status switch
+                    {
+                        TallyConnectionStatus.NotRunning => "Tally application is not running.",
+                        TallyConnectionStatus.RunningNoCompany => "Tally is running but no company is open.",
+                        _ => $"Tally connection failed: {status}"
+                    };
+                    _syncMonitor.FailRun(errorMsg);
+                    return SyncRunResult.Failed;
                 }
 
+                Guard(orgId, runId, effectiveCt);
                 var company = await ResolveOpenCompanyAsync();
                 if (company == null)
                 {
+                    AddLog(orgId, runId, "❌ ABORT: Could not resolve Tally company. Ensure the correct company is open in Tally.", "ERROR", "ORCHESTRATOR");
                     _syncMonitor.FailRun("Could not resolve Tally company. Please select a valid company in Tally.");
-                    return;
+                    return SyncRunResult.Failed;
                 }
+                AddLog(orgId, runId, $"🏢 Target Company: {company}", "INFO", "ORCHESTRATOR");
 
                 if (syncManagers)
                 {
+                    _control.UpdateHeartbeat(orgId, runId, "Syncing Masters");
                     _syncMonitor.SetStage("Masters Sync", "Processing ledgers and groups...", 20, true);
+                    
+                    Guard(orgId, runId, effectiveCt);
                     await _masterSyncService.SyncAllMastersAsync(orgId);
+                    Guard(orgId, runId, effectiveCt);
 
                     // --- Phase 3: Dead-Letter Replay ---
-                    // After masters are in sync, try to resolve previously failed vouchers.
+                    _control.UpdateHeartbeat(orgId, runId, "Replaying Failed Vouchers");
                     _syncMonitor.SetStage("Replay Sync", "Re-processing failed vouchers...", 35, true);
+                    
+                    Guard(orgId, runId, effectiveCt);
                     await _replayService.ReplayAsync(orgId, effectiveCt);
+                    Guard(orgId, runId, effectiveCt);
                 }
 
                 if (syncVouchers)
                 {
-                    _syncMonitor.SetStage("Voucher Sync", "Streaming transactions...", 50, true);
-                    await SyncVouchersWithChannelsAsync(orgId, effectiveCt, fromDate, toDate);
+                    _control.EnsureOwnership(orgId, runId);
+                    effectiveCt.ThrowIfCancellationRequested();
 
+                    // --- PHASE 4: Master Data Validation ---
+                    _control.UpdateHeartbeat(orgId, runId, "Validating Masters");
+                    _syncMonitor.SetStage("Validation", "Checking master data integrity...", 45, true);
+                    using (var scope = _scopeFactory.CreateScope())
+                    {
+                        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                        var groupCount = await db.AccountingGroups.CountAsync(g => g.OrganizationId == orgId, ct);
+                        var ledgerCount = await db.Ledgers.CountAsync(l => l.OrganizationId == orgId, ct);
+                        
+                        AddLog(orgId, runId, $"📊 Master Data Check: Groups={groupCount}, Ledgers={ledgerCount}", "INFO", "VALIDATION");
+                        if (groupCount == 0 || ledgerCount == 0)
+                        {
+                            AddLog(orgId, runId, "⚠️ CRITICAL: Master data (Groups/Ledgers) is missing in DB. Voucher sync may fail to map records correctly.", "WARNING", "VALIDATION");
+                        }
+                    }
+
+                    _control.UpdateHeartbeat(orgId, runId, "Syncing Vouchers");
+                    _syncMonitor.SetStage("Voucher Sync", "Streaming transactions...", 50, true);
+                    await SyncVouchersWithChannelsAsync(orgId, runId, effectiveCt, fromDate, toDate);
+
+                    Guard(orgId, runId, effectiveCt);
+
+                    _control.UpdateHeartbeat(orgId, runId, "Reconciling");
                     _syncMonitor.SetStage("Integrity Verification", "Verifying data parity with Tally...", 90, true);
-                    await RunReconciliationSyncAsync(orgId, effectiveCt);
+                    await RunReconciliationSyncAsync(orgId, runId, effectiveCt);
                 }
 
                 stopwatch.Stop();
-                var total = _syncMonitor.TotalRecordsSynced;
                 var duration = stopwatch.Elapsed;
 
-                if (total == 0)
+                _control.EnsureOwnership(orgId, runId);
+
+                var totalMasters = _syncMonitor.TotalRecordsSynced;
+                if (_syncMonitor.FetchedCount == 0 && totalMasters == 0)
                 {
-                    _syncMonitor.CompleteRun("Sync completed. No new data found in the selected range.");
-                    _syncMonitor.AddLog("ℹ️ No records found matching the sync criteria.", "INFO", "ORCHESTRATOR");
+                    _syncMonitor.CompleteRun("Sync finished. No new records found in Tally.");
+                    AddLog(orgId, runId, $"🏁 Sync Completed in {duration.TotalSeconds:F1}s | Records: 0 fetched. Parity achieved.", "SUCCESS", "ORCHESTRATOR");
+                }
+                else if (_syncMonitor.FetchedCount == 0 && totalMasters > 0)
+                {
+                    _syncMonitor.CompleteRun($"Sync successful. Masters updated: {totalMasters} records.");
+                    AddLog(orgId, runId, $"🏁 Sync Completed in {duration.TotalSeconds:F1}s | Masters: {totalMasters} records synced. No new vouchers.", "SUCCESS", "ORCHESTRATOR");
                 }
                 else
                 {
-                    _syncMonitor.CompleteRun($"Sync successful. Imported {total} records in {duration.TotalSeconds:F1}s.");
+                    _syncMonitor.CompleteRun($"Sync successful. Fetched: {_syncMonitor.FetchedCount}, Saved: {_syncMonitor.SavedCount}, Skipped: {_syncMonitor.SkippedCount}. Masters: {totalMasters}.");
+                    AddLog(orgId, runId, $"🏁 Sync Completed in {duration.TotalSeconds:F1}s | Records: {_syncMonitor.FetchedCount} fetched, {_syncMonitor.SavedCount} saved, {_syncMonitor.SkippedCount} skipped. Masters: {totalMasters}.", "SUCCESS", "ORCHESTRATOR");
                 }
 
-                var dlqCount = _syncMonitor.DeadLetterQueue.Count;
-                if (dlqCount > 0)
-                {
-                    _logger.LogWarning("Sync completed with {DlqCount} voucher(s) in Dead Letter Queue. Review via Sync Monitor → Failed Vouchers.", dlqCount);
-                    _syncMonitor.AddLog($"⚠️ {dlqCount} voucher(s) in Dead Letter Queue — review and replay from Sync Monitor.", "WARN", "ORCHESTRATOR");
-                }
+                return SyncRunResult.Started;
             }
             catch (OperationCanceledException)
             {
-                _logger.LogInformation("Sync cycle cancelled for {Org}", orgId);
+                _logger.LogInformation("Sync cycle [RunId={RunId}] cancelled for {Org}", runId, orgId);
                 _syncMonitor.CancelRun("Synchronization aborted by user or timeout.");
+                return SyncRunResult.Cancelled;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Sync cycle failed.");
+                _logger.LogError(ex, "Sync cycle [RunId={RunId}] failed.", runId);
                 _syncMonitor.FailRun(ex.Message);
+                return SyncRunResult.Failed;
             }
             finally
             {
-                var finalState = _control.GetState(orgId);
-                finalState.Status = SyncLifecycle.Idle;
                 _isSyncRunning = false;
+                _currentRunId = Guid.Empty;
                 
                 // Final UI refresh trigger
-                _syncMonitor.SetProgress(100, "Done");
+                _syncMonitor.SetStage("Sync complete", "Done", 100);
+                
+                // Deterministic cleanup in Control Service
+                var finalLifecycle = _syncMonitor.Status switch {
+                    SyncStatus.Success => SyncLifecycle.Completed,
+                    SyncStatus.Failed => SyncLifecycle.Failed,
+                    SyncStatus.Cancelled => SyncLifecycle.Cancelled,
+                    _ => SyncLifecycle.Idle
+                };
+                _control.Complete(orgId, runId, finalLifecycle);
             }
         }
 
-        private async Task UpdateSyncMetadataAsync(Guid orgId, string entityType, int count, bool success, 
+        private async Task UpdateSyncMetadataAsync(Guid orgId, Guid runId, string entityType, int count, bool success, 
             string? error = null, DateTimeOffset? checkpoint = null, string? lastMasterId = null, string? lastAlterId = null,
             decimal sumDr = 0, decimal sumCr = 0, int ledgerCount = 0, string? ledgerHash = null)
         {
+            // 🔒 [DOUBLE-GUARD PATTERN]
+            // Pass 1: Before I/O starts
+            _control.EnsureOwnership(orgId, runId);
+
             using (var scope = _scopeFactory.CreateScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -336,6 +402,8 @@ namespace Acczite20.Services.Sync
                 meta.RecordsSyncedInLastRun = count;
                 meta.UpdatedAt = DateTimeOffset.UtcNow;
 
+                // Pass 2: Immediately before final commit
+                _control.EnsureOwnership(orgId, runId);
                 await db.SaveChangesAsync();
             }
         }
@@ -387,9 +455,21 @@ namespace Acczite20.Services.Sync
                 || string.Equals(companyName, "Default Company", StringComparison.OrdinalIgnoreCase);
         }
 
-        private async Task SyncVouchersWithChannelsAsync(Guid orgId, CancellationToken ct, DateTimeOffset? fromDate = null, DateTimeOffset? toDate = null)
+        private void AddLog(Guid orgId, Guid runId, string message, string status = "INFO", string category = "ORCHESTRATOR")
         {
-            _syncMonitor.AddLog("🚀 Initializing Priority-Aware Sync Pipeline...", "INFO", "ORCHESTRATOR");
+            var prefix = $"[Org:{orgId}][Run:{runId.ToString().Substring(0, 8)}] ";
+            _syncMonitor.AddLog(prefix + message, status, category);
+        }
+
+        private void Guard(Guid orgId, Guid runId, CancellationToken ct)
+        {
+            _control.EnsureOwnership(orgId, runId);
+            ct.ThrowIfCancellationRequested();
+        }
+
+        private async Task SyncVouchersWithChannelsAsync(Guid orgId, Guid runId, CancellationToken ct, DateTimeOffset? fromDate = null, DateTimeOffset? toDate = null)
+        {
+            AddLog(orgId, runId, "🚀 Initializing Priority-Aware Sync Pipeline...", "INFO", "ORCHESTRATOR");
             _syncMonitor.SetStage("Warming internal caches", "Preparing ID map for high-speed Fact table reconciliation.", 10, true);
             
             // Warm up the ID cache for the entire session
@@ -403,17 +483,20 @@ namespace Acczite20.Services.Sync
                     var company = await db.Companies.FirstOrDefaultAsync(c => c.OrganizationId == orgId && c.Name == companyName, ct);
                     if (company == null)
                     {
-                        _syncMonitor.AddLog($"🏢 Company '{companyName}' not found in DB. Creating...", "INFO", "ORCHESTRATOR");
+                        AddLog(orgId, runId, $"🏢 Company '{companyName}' not found in DB. Creating...", "INFO", "ORCHESTRATOR");
                         company = new Company
                         {
                             Id = Guid.NewGuid(),
                             OrganizationId = orgId,
                             Name = companyName,
+                            TallyCompanyName = companyName,
+                            GSTNumber = string.Empty,
+                            Address = string.Empty,
                             CreatedAt = DateTimeOffset.UtcNow
                         };
                         db.Companies.Add(company);
                         await db.SaveChangesAsync(ct);
-                        _syncMonitor.AddLog($"✅ Company record created.", "SUCCESS", "ORCHESTRATOR");
+                        AddLog(orgId, runId, $"✅ Company record created.", "SUCCESS", "ORCHESTRATOR");
                     }
                 }
 
@@ -444,13 +527,13 @@ namespace Acczite20.Services.Sync
                     if (booksFrom.HasValue)
                     {
                         defaultSyncStart = booksFrom.Value > twoYearsAgo ? booksFrom.Value : twoYearsAgo;
-                        _syncMonitor.AddLog($"Tally $BooksFrom = {booksFrom.Value:yyyy-MM-dd} → syncStart = {defaultSyncStart:yyyy-MM-dd}", "INFO", "ORCHESTRATOR");
+                        AddLog(orgId, runId, $"Tally $BooksFrom = {booksFrom.Value:yyyy-MM-dd} → syncStart = {defaultSyncStart:yyyy-MM-dd}", "INFO", "ORCHESTRATOR");
                     }
                     else
                     {
                         int fyStartYear = DateTimeOffset.Now.Month >= 4 ? DateTimeOffset.Now.Year - 1 : DateTimeOffset.Now.Year - 2;
                         defaultSyncStart = new DateTimeOffset(fyStartYear, 4, 1, 0, 0, 0, TimeSpan.Zero);
-                        _syncMonitor.AddLog($"$BooksFrom unavailable — using FY fallback: {defaultSyncStart:yyyy-MM-dd}", "WARNING", "ORCHESTRATOR");
+                        AddLog(orgId, runId, $"$BooksFrom unavailable — using FY fallback: {defaultSyncStart:yyyy-MM-dd}", "WARNING", "ORCHESTRATOR");
                     }
                 }
                 var syncStart = defaultSyncStart;
@@ -459,8 +542,12 @@ namespace Acczite20.Services.Sync
                 {
                     var effectivePriorityStart = syncStart > priorityDate ? syncStart : priorityDate;
                     _syncMonitor.SetStage("Priority Sync", $"Processing recent records ({effectivePriorityStart:yyyy-MM-dd} to {syncEnd:yyyy-MM-dd})", 20, true);
-                    _syncMonitor.AddLog($"⚡ [PRIORITY] Syncing last 30 days first...", "INFO", "PRIORITY");
-                    await SyncRangeAsync(orgId, effectivePriorityStart, syncEnd, ct);
+                    AddLog(orgId, runId, $"⚡ [PRIORITY] Syncing last 30 days first ({effectivePriorityStart:yyyy-MM-dd} $\rightarrow$ {syncEnd:yyyy-MM-dd})...", "INFO", "PRIORITY");
+                    await SyncRangeAsync(orgId, runId, effectivePriorityStart, syncEnd, ct);
+                }
+                else
+                {
+                    AddLog(orgId, runId, "ℹ️ [PRIORITY] Recent window (last 30 days) already up to date. Skipping.", "INFO", "PRIORITY");
                 }
 
                 // --- PHASE 2: Historical Window Sync (Probe-First) ---
@@ -468,32 +555,40 @@ namespace Acczite20.Services.Sync
                 {
                     var effectiveHistoricalEnd = syncEnd < priorityDate ? syncEnd : priorityDate;
                     _syncMonitor.SetStage("Historical Backfill", "Probing historical segments for data...", 55, true);
-                    _syncMonitor.AddLog($"📚 [HISTORY] Range: {syncStart:yyyy-MM-dd} to {effectiveHistoricalEnd:yyyy-MM-dd}.", "INFO", "HISTORY");
+                    AddLog(orgId, runId, $"📚 [HISTORY] Range: {syncStart:yyyy-MM-dd} to {effectiveHistoricalEnd:yyyy-MM-dd}.", "INFO", "HISTORY");
 
                     var initialProbeSegments = CalculateProbeSegments(syncStart, effectiveHistoricalEnd);
                     var segments = SplitDateRange(syncStart, effectiveHistoricalEnd, initialProbeSegments);
                     var nonEmpty = new List<(DateTimeOffset start, DateTimeOffset end)>();
 
                     _syncMonitor.AddLog($"🔍 [PROBE] Scanning {segments.Count} historical segments sequentially...", "INFO", "HISTORY");
-                    foreach (var (segStart, segEnd) in segments)
+                    foreach (var seg in segments)
                     {
                         ct.ThrowIfCancellationRequested();
-                        await CollectHistoricalProbeSegmentsAsync(segStart, segEnd, nonEmpty, ct);
+
+                        var hasData = await ProbeRangeHasDataAsync(seg.start, seg.end);
+                        if (hasData)
+                        {
+                            AddLog(orgId, runId, $"📍 [PROBE] Data found in {seg.start:yyyy-MM-dd}. Adding to queue.", "DEBUG", "PROBE");
+                            nonEmpty.Add(seg);
+                        }
                     }
 
-                    if (nonEmpty.Count == 0)
+                    if (nonEmpty.Any())
                     {
-                        _syncMonitor.AddLog("📭 [PROBE] No historical vouchers found in any segment. Skipping historical backfill.", "INFO", "HISTORY");
+                        AddLog(orgId, runId, $"✅ Historical sync will process {nonEmpty.Count} active segments.", "INFO", "HISTORY");
+                        foreach (var seg in nonEmpty)
+                        {
+                            _control.EnsureOwnership(orgId, runId);
+                            ct.ThrowIfCancellationRequested();
+                            _control.UpdateHeartbeat(orgId, runId, $"Syncing {seg.start:yyyy-MM-dd}");
+                            
+                            await SyncRangeAsync(orgId, runId, seg.start, seg.end, ct);
+                        }
                     }
                     else
                     {
-                        _syncMonitor.AddLog($"📦 [PROBE] {nonEmpty.Count}/{segments.Count} segments contain data. Starting targeted backfill...", "INFO", "HISTORY");
-                        foreach (var (segStart, segEnd) in nonEmpty)
-                        {
-                            ct.ThrowIfCancellationRequested();
-                            _syncMonitor.SetStage("Historical Backfill", $"Syncing {segStart:yyyy-MM-dd} to {segEnd:yyyy-MM-dd}", 60, true);
-                            await SyncRangeAsync(orgId, segStart, segEnd, ct);
-                        }
+                        AddLog(orgId, runId, "ℹ️ No historical data found in selected range.", "INFO", "HISTORY");
                     }
                 }
             }
@@ -531,12 +626,18 @@ namespace Acczite20.Services.Sync
             catch (Exception) { return -1; }
         }
 
+        private async Task<bool> ProbeRangeHasDataAsync(DateTimeOffset start, DateTimeOffset end)
+        {
+            var count = await ProbeHeaderCountAsync(start, end, CancellationToken.None);
+            return count > 0;
+        }
+
         public void StartContinuousSync(Guid orgId, IEnumerable<string>? selectedCollections = null, int intervalMinutes = 5)
         {
             if (_continuousSyncCts != null) return;
             _continuousSyncCts = new CancellationTokenSource();
-            Task.Run(() => ContinuousSyncLoopAsync(orgId, selectedCollections, intervalMinutes, _continuousSyncCts.Token));
-            _syncMonitor.AddLog($"🔄 Continuous Background Sync enabled (every {intervalMinutes}m).", "SUCCESS", "DAEMON");
+            _ = Task.Run(() => ContinuousSyncLoopAsync(orgId, selectedCollections, intervalMinutes, _continuousSyncCts.Token));
+            _syncMonitor.AddLog($"[Org:{orgId}] 🔄 Continuous Background Sync enabled (every {intervalMinutes}m).", "SUCCESS", "DAEMON");
         }
 
         public void StopContinuousSync()
@@ -554,6 +655,7 @@ namespace Acczite20.Services.Sync
             var lockKey = $"sync:{orgId}";
             while (!ct.IsCancellationRequested)
             {
+                var runId = Guid.NewGuid();
                 try
                 {
                     // 1. Strictly Sequential Execution (No Overlap with Manual Sync)
@@ -565,12 +667,14 @@ namespace Acczite20.Services.Sync
 
                     try 
                     {
+                        Guard(orgId, runId, ct);
+                        
                         // 2. Preventive Memory Cap Check
                         var currentProcess = System.Diagnostics.Process.GetCurrentProcess();
                         var memoryMb = currentProcess.PrivateMemorySize64 / 1024 / 1024;
                         if (memoryMb > 400) // 400MB per user spec
                         {
-                            _syncMonitor.AddLog($"⚠️ [MEMORY] Backing off ({memoryMb} MB). Forcing GC...", "WARNING", "DAEMON");
+                            AddLog(orgId, runId, $"⚠️ [MEMORY] Backing off ({memoryMb} MB). Forcing GC...", "WARNING", "DAEMON");
                             GC.Collect();
                             await Task.Delay(TimeSpan.FromSeconds(30), ct);
                         }
@@ -578,7 +682,7 @@ namespace Acczite20.Services.Sync
                         // 3. Robust Health Probe
                         if (!await TestTallyFetchHealthAsync())
                         {
-                            _syncMonitor.AddLog("💤 Tally busy or unresponsive. Waiting 60s...", "INFO", "DAEMON");
+                            AddLog(orgId, runId, "💤 Tally busy or unresponsive. Waiting 60s...", "INFO", "DAEMON");
                             await Task.Delay(TimeSpan.FromSeconds(60), ct);
                             continue;
                         }
@@ -587,20 +691,23 @@ namespace Acczite20.Services.Sync
                         // This closes the "between cycles" gap for mid-batch edits
                         DateTimeOffset rollingStart = DateTimeOffset.Now.AddHours(-48);
                         DateTimeOffset rollingEnd = DateTimeOffset.Now;
-                        _syncMonitor.AddLog($"⚡ [RECLAIM] Revalidating last 48 hours for data parity...", "INFO", "DAEMON");
-                        await SyncRangeAsync(orgId, rollingStart, rollingEnd, ct);
+                        AddLog(orgId, runId, $"⚡ [RECLAIM] Revalidating last 48 hours for data parity...", "INFO", "DAEMON");
+                        
+                        // Trigger a cycle
+                        await RunSyncCycleInternalAsync(runId, ct, rollingStart, rollingEnd, selectedCollections, SyncOwner.HostedService);
 
                         // 5. Periodic Reconciliation (Every 1 hour for hardening)
                         if ((DateTimeOffset.Now - _lastReconciliationTime).TotalHours >= 1)
                         {
-                            await RunReconciliationSyncAsync(orgId, ct);
+                            Guard(orgId, runId, ct);
+                            await RunReconciliationSyncAsync(orgId, runId, ct);
                             _lastReconciliationTime = DateTimeOffset.Now;
                         }
 
                         // Periodic Dead-Letter Replay (Every 5 mins)
                         if ((DateTimeOffset.Now - _lastReplayTime).TotalMinutes >= 5)
                         {
-                            _syncMonitor.AddLog("🔄 [AUTO-REPLAY] Starting periodic dead-letter recovery...", "INFO", "DAEMON");
+                            AddLog(orgId, runId, "🔄 [AUTO-REPLAY] Starting periodic dead-letter recovery...", "INFO", "DAEMON");
                             await _replayService.ReplayAsync(orgId, ct);
                             _lastReplayTime = DateTimeOffset.Now;
                         }
@@ -627,9 +734,11 @@ namespace Acczite20.Services.Sync
                                                    alterIdReset ? $"AlterId reset ({currentTallyAlterId} < {meta.LastAlterId})" : 
                                                    $"Voucher count drift ({currentTallyCount} vs {meta.LastVoucherCount})";
                                     
-                                    _syncMonitor.AddLog($"🚨 [ANOMALY] {reason}. Zero-Tolerance Triggered. Recovering...", "ERROR", "DAEMON");
+                                    AddLog(orgId, runId, $"🚨 [ANOMALY] {reason}. Zero-Tolerance Triggered. Recovering...", "ERROR", "DAEMON");
                                     meta.LastAlterId = null; // Forces full recovery
                                     meta.LastSuccessfulSync = null;
+                                    
+                                    Guard(orgId, runId, ct);
                                     await db.SaveChangesAsync(ct);
                                     recoveryTriggered = true;
                                 }
@@ -650,12 +759,12 @@ namespace Acczite20.Services.Sync
                                 }
                             }
 
-                            _syncMonitor.AddLog($"🔄 Continuous sync cycle: from {fromDate:HH:mm:ss} to NOW", "INFO", "DAEMON");
-                            await RunSyncCycleInternalAsync(ct, fromDate, DateTimeOffset.Now, selectedCollections);
+                            AddLog(orgId, runId, $"🔄 Continuous sync cycle: from {fromDate:HH:mm:ss} to NOW", "INFO", "DAEMON");
+                            await RunSyncCycleInternalAsync(runId, ct, fromDate, DateTimeOffset.Now, selectedCollections, SyncOwner.HostedService);
                         }
                         else
                         {
-                            _syncMonitor.AddLog("🛡️ [PRIORITY] Normal sync cycle paused for anomaly recovery.", "INFO", "DAEMON");
+                            AddLog(orgId, runId, "🛡️ [PRIORITY] Normal sync cycle paused for anomaly recovery.", "INFO", "DAEMON");
                             // Next cycle will pick up from null cursor (Full Sync)
                         }
                     }
@@ -732,37 +841,75 @@ namespace Acczite20.Services.Sync
             return result;
         }
 
-        private async Task SyncRangeAsync(Guid orgId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+        private async Task SyncRangeAsync(Guid orgId, Guid runId, DateTimeOffset start, DateTimeOffset end, CancellationToken ct)
         {
+            Guard(orgId, runId, ct);
+            _control.UpdateHeartbeat(orgId, runId, $"Range: {start:yyyy-MM-dd}");
+            
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            DateTimeOffset currentSyncFrom = from;
+            DateTimeOffset currentSyncFrom = start;
             Guid companyId = Guid.Empty;
 
             using (var scope = _scopeFactory.CreateScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 var meta = await db.SyncMetadataRecords.FirstOrDefaultAsync(m => m.OrganizationId == orgId && m.EntityType == "Voucher", ct);
-                if (meta != null && meta.LastSuccessfulSync.HasValue && meta.LastSuccessfulSync > from && meta.LastSuccessfulSync < to)
+                
+                // Check if this is a manual sync that should bypass checkpoints
+                bool isManualSync = _control.GetState(orgId).Owner == SyncOwner.Manual;
+                
+                if (meta != null && meta.LastSuccessfulSync.HasValue && !isManualSync)
                 {
-                    currentSyncFrom = meta.LastSuccessfulSync.Value.AddTicks(1);
-                    _syncMonitor.AddLog($"⏮ Resuming Sync from Checkpoint: {currentSyncFrom:yyyy-MM-dd}", "INFO", "ORCHESTRATOR");
+                    if (meta.LastSuccessfulSync > start && meta.LastSuccessfulSync < end)
+                    {
+                        currentSyncFrom = meta.LastSuccessfulSync.Value.AddTicks(1);
+                        AddLog(orgId, runId, $"⏮ RESUME: Found checkpoint at {meta.LastSuccessfulSync.Value:yyyy-MM-dd HH:mm}. Resuming from here.", "INFO", "DECISION");
+                    }
+                    else if (meta.LastSuccessfulSync >= end)
+                    {
+                        var msg = $"⏹ SKIPPED: Checkpoint ({meta.LastSuccessfulSync:yyyy-MM-dd}) is already at or past end date ({end:yyyy-MM-dd}).";
+                        AddLog(orgId, runId, msg, "SUCCESS", "DECISION");
+                        currentSyncFrom = meta.LastSuccessfulSync.Value; // Will trigger early exit below
+                    }
+                }
+                else if (isManualSync)
+                {
+                    AddLog(orgId, runId, $"⚡ MANUAL OVERRIDE: Bypassing checkpoints. Syncing full range: {start:yyyy-MM-dd} $\rightarrow$ {end:yyyy-MM-dd}", "INFO", "DECISION");
+                }
+                else
+                {
+                    AddLog(orgId, runId, $"🆕 INITIAL SYNC: No checkpoint found for range: {start:yyyy-MM-dd} $\rightarrow$ {end:yyyy-MM-dd}", "INFO", "DECISION");
                 }
                 var company = await db.Companies.FirstOrDefaultAsync(c => c.OrganizationId == orgId, ct);
                 companyId = company?.Id ?? Guid.Empty;
+                
+                if (companyId == Guid.Empty)
+                {
+                    var msg = $"❌ SYNC ABORTED: No local company record found for Org {orgId} in Database. Ensure organization is fully setup.";
+                    AddLog(orgId, runId, msg, "ERROR", "ORCHESTRATOR");
+                    _syncMonitor.FailRun("Missing organization mapping in database.");
+                    return;
+                }
             }
 
-            if (companyId == Guid.Empty || currentSyncFrom > to) return;
+            if (currentSyncFrom > end)
+            {
+                var msg = $"⏹ RANGE SKIPPED: Resuming point ({currentSyncFrom:yyyy-MM-dd}) is already at or past the end point ({end:yyyy-MM-dd}). Nothing to process.";
+                AddLog(orgId, runId, msg, "INFO", "ORCHESTRATOR");
+                _syncMonitor.SetStage("Complete", "Range already up-to-date.", 100);
+                return;
+            }
 
             var progress = new VoucherSyncProgressAggregator();
             int layer2BatchSize = _syncMonitor.SyncMode == "Safe" ? _syncMonitor.BatchSize : 25;
             int coarseDensityLimit = layer2BatchSize * 2;
 
             var scheduler = new VoucherSyncChunkScheduler(TimeSpan.FromHours(1), layer2BatchSize, coarseDensityLimit);
-            var executor = new TallyVoucherRequestExecutor(_tallyService, _xmlParser, scheduler, _syncMonitor);
-            var dbWriter = new VoucherSyncDbWriter(orgId, _scopeFactory, _syncMonitor, progress, sw, _projector, layer2BatchSize);
+            var executor = new TallyVoucherRequestExecutor(_tallyService, _xmlParser, scheduler, _syncMonitor, _control);
+            var dbWriter = new VoucherSyncDbWriter(orgId, _scopeFactory, _syncMonitor, progress, sw, _projector, _control, layer2BatchSize);
             var controller = new VoucherSyncController(scheduler, executor, dbWriter, progress, _syncMonitor, _tallyService, _control);
 
-            await controller.RunAsync(orgId, companyId, currentSyncFrom, to, (voucher, token) => PrepareVoucherForWriteAsync(orgId, companyId, voucher, token),
+            await controller.RunAsync(orgId, runId, companyId, currentSyncFrom, end, (voucher, token) => PrepareVoucherForWriteAsync(orgId, companyId, voucher, token),
                 async (chunk, metrics, token) =>
                 {
                     var snapshot = progress.Snapshot();
@@ -804,10 +951,10 @@ namespace Acczite20.Services.Sync
                         }
                     }
                     
-                    await UpdateSyncMetadataAsync(orgId, "Voucher", currentIdCount, true, null, chunk.End, string.Empty, metrics.MaxAlterId.ToString(), currentSumDr, currentSumCr, currentLedgerCount, currentLedgerHash);
+                    await UpdateSyncMetadataAsync(orgId, runId, "Voucher", currentIdCount, true, null, chunk.End, string.Empty, metrics.MaxAlterId.ToString(), currentSumDr, currentSumCr, currentLedgerCount, currentLedgerHash);
                 }, ct);
 
-            await SyncDeletionsAsync(orgId, from, to, ct);
+            await SyncDeletionsAsync(orgId, runId, start, end, ct);
         }
 
         private async ValueTask<Voucher?> PrepareVoucherForWriteAsync(Guid orgId, Guid companyId, Voucher voucher, CancellationToken ct)
@@ -874,6 +1021,7 @@ namespace Acczite20.Services.Sync
                     using var r = XmlReader.Create(s1, new XmlReaderSettings { Async = true });
                     while (await r.ReadAsync())
                     {
+                        ct.ThrowIfCancellationRequested();
                         if (r.NodeType == XmlNodeType.Element && r.Name == "VOUCHER")
                         {
                             var e = (XElement)XNode.ReadFrom(r);
@@ -909,13 +1057,25 @@ namespace Acczite20.Services.Sync
             await handler.BulkInsertVouchersAsync(vouchers);
         }
 
-        private void UpdateDetailedProgress(int vCount, int lCount, int iCount, double elapsedSeconds)
+        private void UpdateDetailedProgress(int vCount, int lCount, int iCount, int bCount, double elapsedSeconds)
         {
-            _syncMonitor.RecordInsertedBatch(vCount, lCount, iCount, elapsedSeconds);
+            _syncMonitor.RecordInsertedBatch(vCount, lCount, iCount, bCount, elapsedSeconds);
         }
 
-        public async Task RunFullSyncAsync(Guid orgId, DateTimeOffset? fromDate = null, DateTimeOffset? toDate = null, CancellationToken ct = default, IEnumerable<string>? selectedCollections = null)
+        public async Task<SyncRunResult> RunSyncCycleAsync(CancellationToken ct)
         {
+            var runId = Guid.NewGuid();
+            try
+            {
+                return await RunSyncCycleInternalAsync(runId, ct);
+            }
+            catch (OperationCanceledException) { return SyncRunResult.Cancelled; }
+            catch { return SyncRunResult.Failed; }
+        }
+
+        public async Task<SyncRunResult> RunFullSyncAsync(Guid orgId, DateTimeOffset? fromDate = null, DateTimeOffset? toDate = null, CancellationToken ct = default, IEnumerable<string>? selectedCollections = null, Guid? runId = null)
+        {
+            var activeRunId = runId ?? Guid.NewGuid();
             var lockKey = $"sync:{orgId}";
             if (await _lockProvider.AcquireLockAsync(lockKey, TimeSpan.FromSeconds(2), ct))
             {
@@ -931,23 +1091,37 @@ namespace Acczite20.Services.Sync
                         var meta = await db.SyncMetadataRecords.FirstOrDefaultAsync(m => m.OrganizationId == orgId && m.EntityType == "Voucher", ct);
                         if (meta != null && fromDate.HasValue) 
                         {
+                            _control.EnsureOwnership(orgId, activeRunId);
                             meta.LastSuccessfulSync = fromDate;
                             await db.SaveChangesAsync(ct);
+                            AddLog(orgId, activeRunId, $"⏮ Mandatory Checkpoint Reset: Records will be re-synchronized starting from {fromDate.Value:yyyy-MM-dd}.", "INFO", "ORCHESTRATOR");
+                        }
+                        else if (meta == null)
+                        {
+                            AddLog(orgId, activeRunId, "🆕 First-time synchronization detected for this organization.", "INFO", "ORCHESTRATOR");
                         }
                     }
-                    await RunSyncCycleInternalAsync(ct, fromDate, toDate, selectedCollections, SyncOwner.Manual);
+                    return await RunSyncCycleInternalAsync(activeRunId, ct, fromDate, toDate, selectedCollections, SyncOwner.Manual);
+                }
+                catch (OperationCanceledException) { return SyncRunResult.Cancelled; }
+                catch (Exception ex) 
+                { 
+                    _logger.LogError(ex, "Manual Full Sync Failed [RunId={RunId}]", activeRunId);
+                    return SyncRunResult.Failed; 
                 }
                 finally { await _lockProvider.ReleaseLockAsync(lockKey); }
             }
             else
             {
-                _syncMonitor.FailRun("Active Sync Detected: A background or manual synchronization is already in progress. Please wait for it to complete or stop it from the Sync Monitor.");
+                _syncMonitor.FailRun("Active Sync Detected: A background or manual synchronization is already in progress.");
+                return SyncRunResult.Ignored;
             }
         }
 
-        private async Task SyncDeletionsAsync(Guid orgId, DateTimeOffset? from, DateTimeOffset? to, CancellationToken ct)
+        private async Task SyncDeletionsAsync(Guid orgId, Guid runId, DateTimeOffset? from, DateTimeOffset? to, CancellationToken ct)
         {
             if (_syncMonitor.CurrentStage == "Sync failed") return;
+            Guard(orgId, runId, ct);
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             // Deletion logic... (simplified for brevity but keeping structure)
@@ -960,11 +1134,12 @@ namespace Acczite20.Services.Sync
 
         private class IntegrityResult { public bool IsBalanced { get; set; } }
 
-        public async Task RunReconciliationSyncAsync(Guid orgId, CancellationToken ct)
+        public async Task RunReconciliationSyncAsync(Guid orgId, Guid runId, CancellationToken ct)
         {
             try
             {
-                _syncMonitor.AddLog("🛡️ [ENTERPRISE] Starting 4-Vector Reconciliation (Count/Dr/Cr/Ledger)...", "INFO", "RECON");
+                Guard(orgId, runId, ct);
+                _syncMonitor.AddLog($"[Org:{orgId}] 🛡️ [RECON] Starting 4-Vector Reconciliation (Count/Dr/Cr/Ledger)...", "INFO", "RECON");
                 
                 DateTime to = DateTime.Now;
                 DateTime from = to.AddDays(-30);
@@ -975,6 +1150,7 @@ namespace Acczite20.Services.Sync
                     
                     for (var segmentStart = from.Date; segmentStart <= to.Date; segmentStart = segmentStart.AddDays(1))
                     {
+                        ct.ThrowIfCancellationRequested();
                         var segmentEnd = segmentStart.AddDays(1).AddTicks(-1);
 
                         // 4-Vector Check: Local
@@ -1024,7 +1200,7 @@ namespace Acczite20.Services.Sync
                                             $"Ledgers({localLedgerCount} vs {tallyLedgerCount})";
                             
                             _syncMonitor.AddLog($"🚨 [AUDIT] {driftMsg}. Distribution Hash: {(localLedgerHash.Length >= 8 ? localLedgerHash.Substring(0, 8) : "N/A")}... vs {(tallyLedgerHash.Length >= 8 ? tallyLedgerHash.Substring(0, 8) : "N/A")}... Triggering targeted repair...", "WARNING", "RECON");
-                            await SyncRangeAsync(orgId, segmentStart, segmentEnd, ct);
+                            await SyncRangeAsync(orgId, runId, segmentStart, segmentEnd, ct);
                         }
                     }
                 }
@@ -1038,26 +1214,19 @@ namespace Acczite20.Services.Sync
 
         private async Task<(int count, decimal sumDr, decimal sumCr, int ledgerCount, string ledgerHash)> GetTallyVoucherMetricsAsync(DateTime start, DateTime end)
         {
-            var tdl = $@"
-[Collection: AccziteVoucherMetrics]
-    Type: Voucher
-    Filter: AccziteDateFilter
-    Fetch: MASTERID, ALLLEDGERENTRIES.AMOUNT, ALLLEDGERENTRIES.LEDGERNAME
-    [System: Formula]
-        AccziteDateFilter: $Date >= @@StartDate AND $Date <= @@EndDate
-    [Variable: StartDate]
-        Type: Date
-    [Variable: EndDate]
-        Type: Date
-";
+            var tdl = @"
+            <COLLECTION NAME=""AccziteVoucherMetrics"" ISMODIFY=""No"">
+              <TYPE>Voucher</TYPE>
+              <FILTER>AccziteDateFilter</FILTER>
+              <FETCH>MASTERID, ALLLEDGERENTRIES.AMOUNT, ALLLEDGERENTRIES.LEDGERNAME</FETCH>
+            </COLLECTION>";
             try
             {
-                var response = await _tallyService.ExportCollectionXmlAsync("AccziteVoucherMetrics", isCollection: true, 
-                    customTdl: tdl, 
-                    variables: new Dictionary<string, string> { 
-                        { "StartDate", start.ToString("yyyyMMdd") }, 
-                        { "EndDate", end.ToString("yyyyMMdd") } 
-                    });
+                var response = await _tallyService.ExportCollectionXmlAsync("AccziteVoucherMetrics",
+                    fromDate: new DateTimeOffset(start, TimeSpan.Zero),
+                    toDate: new DateTimeOffset(end, TimeSpan.Zero),
+                    isCollection: true,
+                    customTdl: tdl);
                     
                 if (string.IsNullOrEmpty(response)) return (0, 0, 0, 0, string.Empty);
                 var doc = XDocument.Parse(response);
@@ -1108,46 +1277,39 @@ namespace Acczite20.Services.Sync
         private async Task<int> GetTallyMaxAlterIdAsync()
         {
             var tdl = @"
-[Collection: AccziteAlterIdProbe]
-    Type: Voucher
-    Sort: Default : -$AlterId
-    Max: 1
-    Fetch: AlterId
-";
+            <COLLECTION NAME=""AccziteAlterIdProbe"" ISMODIFY=""No"">
+              <TYPE>Voucher</TYPE>
+              <FETCH>ALTERID</FETCH>
+            </COLLECTION>";
             try
             {
                 var response = await _tallyService.ExportCollectionXmlAsync("AccziteAlterIdProbe", isCollection: true, customTdl: tdl);
                 if (string.IsNullOrEmpty(response)) return 0;
                 var doc = XDocument.Parse(response);
-                var val = doc.Descendants("ALTERID").FirstOrDefault()?.Value;
-                return int.TryParse(val, out var aid) ? aid : 0;
+                return doc.Descendants("ALTERID")
+                    .Select(a => int.TryParse(a.Value, out var i) ? i : 0)
+                    .DefaultIfEmpty(0)
+                    .Max();
             }
             catch { return -1; }
         }
 
         private async Task<int> GetTallyVoucherCountAsync(DateTime start, DateTime end)
         {
-            // Simple TDL collection count request
-            var tdl = $@"
-[Collection: AccziteVoucherCount]
-    Type: Voucher
-    Filter: AccziteDateFilter
-    [System: Formula]
-        AccziteDateFilter: $Date >= @@StartDate AND $Date <= @@EndDate
-    [Variable: StartDate]
-        Type: Date
-    [Variable: EndDate]
-        Type: Date
-";
+            var tdl = @"
+            <COLLECTION NAME=""AccziteVoucherCount"" ISMODIFY=""No"">
+              <TYPE>Voucher</TYPE>
+              <FILTER>AccziteDateFilter</FILTER>
+              <FETCH>MASTERID</FETCH>
+            </COLLECTION>";
             try
             {
-                var response = await _tallyService.ExportCollectionXmlAsync("AccziteVoucherCount", isCollection: true, 
-                    customTdl: tdl, 
-                    variables: new Dictionary<string, string> { 
-                        { "StartDate", start.ToString("yyyyMMdd") }, 
-                        { "EndDate", end.ToString("yyyyMMdd") } 
-                    });
-                    
+                var response = await _tallyService.ExportCollectionXmlAsync("AccziteVoucherCount",
+                    fromDate: new DateTimeOffset(start, TimeSpan.Zero),
+                    toDate: new DateTimeOffset(end, TimeSpan.Zero),
+                    isCollection: true,
+                    customTdl: tdl);
+
                 if (string.IsNullOrEmpty(response)) return 0;
                 var doc = XDocument.Parse(response);
                 return doc.Descendants("VOUCHER").Count();

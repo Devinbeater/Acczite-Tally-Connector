@@ -17,17 +17,26 @@ namespace Acczite20.Services.Sync
         private readonly TallyXmlParser _xmlParser;
         private readonly VoucherSyncChunkScheduler _scheduler;
         private readonly SyncStateMonitor _syncMonitor;
+        private readonly ISyncControlService _syncControl;
 
         public TallyVoucherRequestExecutor(
             TallyXmlService tallyService,
             TallyXmlParser xmlParser,
             VoucherSyncChunkScheduler scheduler,
-            SyncStateMonitor syncMonitor)
+            SyncStateMonitor syncMonitor,
+            ISyncControlService syncControl)
         {
             _tallyService = tallyService;
-            _xmlParser = xmlParser;
-            _scheduler = scheduler;
-            _syncMonitor = syncMonitor;
+            _xmlParser    = xmlParser;
+            _scheduler   = scheduler;
+            _syncMonitor  = syncMonitor;
+            _syncControl  = syncControl;
+        }
+
+        private void Guard(Guid orgId, Guid runId, CancellationToken ct)
+        {
+            _syncControl.EnsureOwnership(orgId, runId);
+            ct.ThrowIfCancellationRequested();
         }
 
         // ── Two-pass voucher export (Dual-Layer Control) ──────────────────────────
@@ -46,6 +55,7 @@ namespace Acczite20.Services.Sync
 
         public async IAsyncEnumerable<Voucher> ExportVouchersStreamAsync(
             Guid orgId,
+            Guid runId,
             Guid companyId,
             DateRange range,
             VoucherChunkExecutionMetrics metrics,
@@ -65,9 +75,14 @@ namespace Acczite20.Services.Sync
             // ── Pass 1: Voucher headers (scalar fields only) ─────────────────────
             var headers = new Dictionary<string, Voucher>(StringComparer.OrdinalIgnoreCase);
             long headerBytes = 0;
-
+ 
+            Guard(orgId, runId, ct);
+            _syncControl.UpdateHeartbeat(orgId, runId, $"Pass 1: Discovering {range.Start:yyyy-MM-dd}");
+ 
             await using var headerLease = await _tallyService.OpenCollectionXmlStreamAsync(
                 "AccziteVoucherHeaders", range.Start, range.End, true, ct);
+ 
+            Guard(orgId, runId, ct);
 
             if (headerLease == null)
             {
@@ -107,11 +122,13 @@ namespace Acczite20.Services.Sync
 
             if (headers.Count == 0)
             {
-                _syncMonitor.AddLog($"🔍 Discovery: 0 vouchers found for range {range.Start:yyyy-MM-dd} to {range.End:yyyy-MM-dd}. Tally may have no data for these dates.", "WARNING", "VOUCHERS");
+                _syncMonitor.AddLog($"🔍 Discovery [PASS 1]: 0 vouchers found for range {range.Start:yyyy-MM-dd} to {range.End:yyyy-MM-dd}.", "WARNING", "VOUCHERS");
+                _syncMonitor.AddLog("💡 TIP: Verify Tally is open with the correct company and that vouchers exist in the selected range.", "INFO", "DIAG");
             }
             else
             {
-                _syncMonitor.AddLog($"✅ Discovery: {headers.Count} voucher headers resolved for {range.Start:yyyy-MM-dd}.", "DEBUG", "VOUCHERS");
+                _syncMonitor.AddLog($"✅ Discovery [PASS 1]: {headers.Count} voucher headers resolved in {sw.Elapsed.TotalSeconds:0.#}s.", "SUCCESS", "VOUCHERS");
+                _syncMonitor.FetchedCount += headers.Count; // Prime the fetched counter from the header pass
             }
 
             // Empty chunk — nothing to do; let the scheduler grow the window.
@@ -162,32 +179,46 @@ namespace Acczite20.Services.Sync
                     var idList = string.Join(",", batch);
                     metrics.WindowUsed = _scheduler.CurrentWindow;
                     
-                    _syncMonitor.AddLog($"Fetching heavy detail batch {currentBatch++}/{totalBatches} ({batch.Length} vouchers)...", "DEBUG", "TALLY");
-
+                    // Log every 10th batch to avoid flooding, but always log first and last
+                    if (currentBatch == 1 || currentBatch == totalBatches || currentBatch % 10 == 0)
+                    {
+                        _syncMonitor.AddLog($"Fetching heavy detail batch {currentBatch}/{totalBatches} ({batch.Length} vouchers)...", "DEBUG", "TALLY");
+                    }
+                    
                     // Safe to request detail fields because Tally evaluates strictly <= 25 records.
                     // Splitting into 2A (Ledgers) and 2B (Inventory) to reduce peak XML payload per response.
                     
                     // ── Pass 2A: Ledgers ──────────────────────────────────────────
+                    Guard(orgId, runId, ct);
+                    _syncControl.UpdateHeartbeat(orgId, runId, $"Pass 2A: Details {currentBatch}/{totalBatches}");
+                    
                     await using var ledgerLease = await _tallyService.OpenCollectionXmlStreamAsync(
                         "AccziteVoucherLedgers", range.Start, range.End, true, ct, idList);
+ 
+                    Guard(orgId, runId, ct);
 
                     if (ledgerLease == null)
                         throw new InvalidOperationException($"Tally did not return a ledger stream for {range} batch.");
 
                     metrics.PayloadBytes += ledgerLease.DeclaredSize;
-                    await MergeStreamAsync(ledgerLease.Stream, headers, metrics, ct,
+                    await MergeStreamAsync(ledgerLease.Stream, headers, metrics, ct, _syncMonitor,
                         (el, v) => { if (!_xmlParser.MergeLedgerEntries(el, v)) { metrics.RejectedCount++; return false; } return true; },
                         readerSettings);
 
                     // ── Pass 2B: Inventory ────────────────────────────────────────
+                    Guard(orgId, runId, ct);
+                    _syncControl.UpdateHeartbeat(orgId, runId, $"Pass 2B: Stock {currentBatch}/{totalBatches}");
+                    
                     await using var inventoryLease = await _tallyService.OpenCollectionXmlStreamAsync(
                         "AccziteVoucherInventory", range.Start, range.End, true, ct, idList);
+ 
+                    Guard(orgId, runId, ct);
 
                     if (inventoryLease != null)
                     {
                         var noCountMetrics = new VoucherChunkExecutionMetrics();
                         metrics.PayloadBytes += inventoryLease.DeclaredSize;
-                        await MergeStreamAsync(inventoryLease.Stream, headers, noCountMetrics, ct,
+                        await MergeStreamAsync(inventoryLease.Stream, headers, noCountMetrics, ct, _syncMonitor,
                             (el, v) => { _xmlParser.MergeInventoryEntries(el, v); return true; },
                             readerSettings);
                     }
@@ -227,6 +258,7 @@ namespace Acczite20.Services.Sync
             Dictionary<string, Voucher> headers,
             VoucherChunkExecutionMetrics metrics,
             CancellationToken ct,
+            SyncStateMonitor syncMonitor,
             Func<XElement, Voucher, bool> mergeAction,
             XmlReaderSettings settings)
         {
@@ -257,9 +289,15 @@ namespace Acczite20.Services.Sync
                 }
 
                 if (mergeAction(element, voucher))
+                {
                     metrics.FetchedCount++;
+                }
                 else
-                    headers.Remove(masterId); // failed integrity — exclude from yield
+                {
+                    headers.Remove(masterId);
+                    syncMonitor.SkippedCount++;
+                    syncMonitor.AddLog($"⚠️ PASS 2: Integrity check failed for MasterID {masterId}. Skipping.", "WARNING", "VOUCHERS");
+                }
             }
         }
     }

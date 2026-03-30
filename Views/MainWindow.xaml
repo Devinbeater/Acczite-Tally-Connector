@@ -7,7 +7,7 @@
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource LightTealBg}"
         FontFamily="Segoe UI"
-        Icon="pack://application:,,,/Assets/logo.ico">
+        Icon="pack://application:,,,/Assets/app.ico">
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="SidebarColumn" Width="240"/>

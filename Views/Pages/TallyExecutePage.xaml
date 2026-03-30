@@ -2,292 +2,262 @@
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:ui="http://schemas.modernwpf.com/2019"
-      Title="TallyExecutePage"
+      xmlns:conv="clr-namespace:Acczite20.Converters"
+      Title="Tally Sync Dashboard"
       Background="{StaticResource LightTealBg}">
+
+    <Page.Resources>
+        <conv:SyncLogLevelToColorConverter x:Key="LevelToBrush" />
+        <conv:SyncLogLevelToForegroundConverter x:Key="LevelToForeground" />
+
+        <!-- Fixed DatePicker Style to ensure calendar icon visibility -->
+        <Style x:Key="DefaultDatePickerStyle" TargetType="DatePicker">
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="ui:ControlHelper.CornerRadius" Value="8"/>
+        </Style>
+    </Page.Resources>
 
     <Grid Margin="40">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/> <!-- Header -->
+            <RowDefinition Height="*"/>    <!-- Dashboard -->
         </Grid.RowDefinitions>
 
         <!-- Header Section -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,40">
-            <TextBlock Text="Ready for Enterprise Sync" FontSize="32" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}"/>
-            <TextBlock Text="Review the configuration summary below before initiating the data pipeline." 
-                       FontSize="16" Foreground="{StaticResource GrayText}" Margin="0,5,0,0"/>
-        </StackPanel>
+        <Grid Grid.Row="0" Margin="0,0,0,32">
+            <StackPanel Orientation="Horizontal">
+                <Button Content="← Back" Click="Back_Click" 
+                        Style="{StaticResource GhostButtonStyle}" 
+                        Height="36" Padding="16,0" Margin="0,0,24,0"
+                        ui:ControlHelper.CornerRadius="18"/>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Tally Synchronization Dashboard" FontSize="28" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}"/>
+                    <TextBlock Text="Monitor extraction status and detailed activity logs in real-time." 
+                               FontSize="14" Foreground="{StaticResource GrayText}" Margin="0,4,0,0"/>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
 
-        <!-- Main Content Area -->
+        <!-- Main Dashboard Area -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="2*"/> <!-- Main Card -->
-                <ColumnDefinition Width="1*"/> <!-- Side Info -->
+                <ColumnDefinition Width="1.4*"/> <!-- Execution Layer -->
+                <ColumnDefinition Width="320"/>    <!-- Configuration Layer -->
             </Grid.ColumnDefinitions>
 
-            <!-- Execution Summary Card -->
-            <Border Grid.Column="0" Background="{StaticResource BaseWhite}" CornerRadius="16" Padding="32" 
-                    BorderBrush="#E2E8F0" BorderThickness="1.5"
-                    Effect="{StaticResource CardShadow}"
-                    VerticalAlignment="Stretch" Margin="0,0,24,20">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/> <!-- Title/Back -->
-                        <RowDefinition Height="*"/>    <!-- Scrollable Content -->
-                        <RowDefinition Height="Auto"/> <!-- Action Panel -->
-                    </Grid.RowDefinitions>
+            <!-- LEFT: Execution Pane (Progress + Activity Log) -->
+            <Grid Grid.Column="0" Margin="0,0,32,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/> <!-- Failure Banner -->
+                    <RowDefinition Height="Auto"/> <!-- Status Summary -->
+                    <RowDefinition Height="*"/>    <!-- Detailed Activity Logs -->
+                </Grid.RowDefinitions>
 
-                    <Grid Grid.Row="0" Margin="0,0,0,24">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        
-                        <Button Content="← Back" Click="Back_Click" 
-                                Style="{StaticResource PrimaryButtonStyle}" 
-                                Height="36" FontSize="13" Margin="0,0,16,0" Padding="16,0"
-                                ui:ControlHelper.CornerRadius="18"/>
-                                
-                        <TextBlock Grid.Column="1" Text="Synchronization Manifest" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource PrimaryTeal}" VerticalAlignment="Center" />
-                    </Grid>
-                    
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,0,0,24">
+                <!-- 0. Failure Banner (Visible only on error) -->
+                <Border Grid.Row="0" x:Name="FailureBanner" Visibility="Collapsed" 
+                        Background="#FEF2F2" BorderBrush="#FEE2E2" BorderThickness="1" 
+                        CornerRadius="12" Padding="20,16" Margin="0,0,0,24">
+                    <StackPanel Orientation="Horizontal">
+                        <ui:SymbolIcon Symbol="Important" Foreground="#EF4444" Margin="0,0,12,0" Width="20" Height="20"/>
                         <StackPanel>
-                            <Expander Header="Sync Logs" IsExpanded="False" Background="#F8FAFC" BorderBrush="#CBD5E1" BorderThickness="1" ui:ControlHelper.CornerRadius="10">
-                                <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto" Margin="10">
-                                    <TextBlock Text="{Binding Summary}" FontSize="14" Foreground="{StaticResource CharcoalText}" 
-                                               TextWrapping="Wrap" LineHeight="28" FontFamily="Consolas" Opacity="0.9"/>
-                                </ScrollViewer>
-                            </Expander>
-
-                            <!-- Sync Progress Panel -->
-                            <StackPanel x:Name="SyncProgressPanel" Visibility="Collapsed" Margin="0,24,0,0">
-                                <Separator Background="#E2E8F0" Margin="0,0,0,24"/>
-
-                                <Border Background="#ECFEFF" BorderBrush="#A5F3FC" BorderThickness="1" CornerRadius="12" Padding="18">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-
-                                        <ui:ProgressRing x:Name="SyncRunRing" IsActive="True" Width="40" Height="40"
-                                                         Foreground="{StaticResource PrimaryTeal}" Margin="0,0,16,0"
-                                                         VerticalAlignment="Top"/>
-
-                                        <StackPanel Grid.Column="1">
-                                            <TextBlock x:Name="SyncStatusText" Text="Preparing synchronization..."
-                                                       FontSize="17" FontWeight="SemiBold" Foreground="{StaticResource PrimaryTeal}"/>
-                                            <TextBlock x:Name="SyncStageDetailText" Text="Waiting for the first live update."
-                                                       FontSize="12" Foreground="{StaticResource GrayText}" Margin="0,6,0,0"
-                                                       TextWrapping="Wrap"/>
-
-                                            <ProgressBar x:Name="SyncProgressBar" Height="12" Minimum="0" Maximum="100"
-                                                         Value="0" Margin="0,14,0,0"
-                                                         Foreground="{StaticResource PrimaryTeal}" Background="#DDE7EE" BorderThickness="0"
-                                                         ui:ControlHelper.CornerRadius="6"/>
-
-                                            <!-- Live Controls -->
-                                            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                                                <Button x:Name="PauseButton" Content="Pause" Width="90" Click="PauseButton_Click" Height="30" FontSize="12" Background="#E2E8F0" BorderThickness="0"/>
-                                                <Button x:Name="CooldownButton" Content="Cooldown" Margin="10,0,0,0" Width="110" Click="ForceCooldown_Click" Height="30" FontSize="12" Background="#FEE2E2" Foreground="#DC2626" BorderBrush="#FECACA"/>
-                                            </StackPanel>
-
-                                            <DockPanel Margin="0,10,0,0">
-                                                <TextBlock x:Name="SyncProgressCaptionText" Text="Sync engine idle"
-                                                           FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}"/>
-                                                <TextBlock x:Name="SyncCheckpointText" Text="Next checkpoint at 100 synced records"
-                                                           DockPanel.Dock="Right" FontSize="12" Foreground="{StaticResource GrayText}"/>
-                                            </DockPanel>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-
-                                <UniformGrid Columns="4" Margin="0,16,0,0">
-                                    <Border Background="{StaticResource BaseWhite}" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,0,12,0">
-                                        <StackPanel>
-                                            <TextBlock Text="Synced Records" FontSize="11" Foreground="{StaticResource GrayText}"/>
-                                            <TextBlock x:Name="SyncedRecordsText" Text="0" FontSize="20" FontWeight="Bold" Foreground="{StaticResource CharcoalText}" Margin="0,6,0,0"/>
-                                        </StackPanel>
-                                    </Border>
-                                    <Border Background="{StaticResource BaseWhite}" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,0,12,0">
-                                        <StackPanel>
-                                            <TextBlock Text="Voucher Rate" FontSize="11" Foreground="{StaticResource GrayText}"/>
-                                            <TextBlock x:Name="VoucherRateText" Text="0 /sec" FontSize="20" FontWeight="Bold" Foreground="{StaticResource CharcoalText}" Margin="0,6,0,0"/>
-                                        </StackPanel>
-                                    </Border>
-                                    <Border Background="{StaticResource BaseWhite}" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,0,12,0">
-                                        <StackPanel>
-                                            <TextBlock Text="Memory" FontSize="11" Foreground="{StaticResource GrayText}"/>
-                                            <TextBlock x:Name="MemoryUsageText" Text="0 MB" FontSize="20" FontWeight="Bold" Foreground="{StaticResource CharcoalText}" Margin="0,6,0,0"/>
-                                        </StackPanel>
-                                    </Border>
-                                    <Border Background="{StaticResource BaseWhite}" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="10" Padding="14">
-                                        <StackPanel>
-                                            <TextBlock Text="Batch Snapshot" FontSize="11" Foreground="{StaticResource GrayText}"/>
-                                            <TextBlock x:Name="BatchSnapshotText" Text="Waiting for the first insert batch"
-                                                       FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}"
-                                                       Margin="0,6,0,0" TextWrapping="Wrap"/>
-                                        </StackPanel>
-                                    </Border>
-                                </UniformGrid>
-
-                                <Border Background="{StaticResource BaseWhite}" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="12" Padding="16" Margin="0,16,0,0">
-                                    <StackPanel>
-                                        <DockPanel Margin="0,0,0,12">
-                                            <TextBlock Text="Recent Sync Activity" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}"/>
-                                            <Border x:Name="RunStateBadge" DockPanel.Dock="Right" Background="#DCFCE7" CornerRadius="999" Padding="10,4">
-                                                <TextBlock x:Name="RunStateBadgeText" Text="Idle" FontSize="11" FontWeight="Bold" Foreground="#166534"/>
-                                            </Border>
-                                        </DockPanel>
-
-                                        <ScrollViewer Height="170" VerticalScrollBarVisibility="Auto">
-                                            <ItemsControl x:Name="LiveLogList">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border BorderBrush="#F1F5F9" BorderThickness="0,0,0,1" Padding="0,8">
-                                                            <Grid>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="Auto"/>
-                                                                    <ColumnDefinition Width="Auto"/>
-                                                                    <ColumnDefinition Width="*"/>
-                                                                </Grid.ColumnDefinitions>
-                                                                <TextBlock Text="{Binding Timestamp, StringFormat=\{0:HH:mm:ss\}}" FontSize="11" Foreground="#94A3B8" Margin="0,0,10,0"/>
-                                                                <Border Grid.Column="1" Background="#E2E8F0" CornerRadius="4" Padding="6,2" Margin="0,0,10,0">
-                                                                    <TextBlock Text="{Binding Level}" FontSize="9" FontWeight="Bold" Foreground="#475569"/>
-                                                                </Border>
-                                                                <TextBlock Grid.Column="2" Text="{Binding Message}" FontSize="12" Foreground="{StaticResource CharcoalText}" TextWrapping="Wrap"/>
-                                                            </Grid>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </ScrollViewer>
-                                    </StackPanel>
-                                </Border>
-
-                                <TextBlock Text="Live telemetry is driven by the real sync monitor and updates as each stage completes."
-                                           FontSize="12" Foreground="{StaticResource GrayText}" Margin="0,10,0,0" HorizontalAlignment="Center"/>
-                            </StackPanel>
+                            <TextBlock Text="Synchronization Failed" FontWeight="Bold" Foreground="#991B1B" FontSize="15"/>
+                            <TextBlock x:Name="FailureReasonText" Text="[Error reason appears here]" Foreground="#B91C1C" FontSize="13" TextWrapping="Wrap"/>
                         </StackPanel>
-                    </ScrollViewer>
-                    <StackPanel Grid.Row="2" x:Name="ActionPanel" Margin="0,10,0,0">
-                        <Separator Margin="0,0,0,16" Background="#E2E8F0"/>
-                        
-                        <!-- Verified Config Status Wrapper -->
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                            <ui:SymbolIcon Symbol="ProtectedDocument" Foreground="#10B981" Margin="0,4,8,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="Verified Configuration: Tally connection established, ready for extraction." 
-                                       VerticalAlignment="Center" Foreground="#64748B" FontSize="12" FontStyle="Italic"/>
-                        </StackPanel>
-
-                        <!-- Synchronization Action Panel -->
-                        <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="12" Padding="20">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-
-                                <!-- Config Section -->
-                                <StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                        <ui:SymbolIcon Symbol="Calendar" Foreground="#10B981" Margin="0,0,10,0" />
-                                        <TextBlock Text="Sync Range Configuration" FontSize="14" FontWeight="SemiBold" Foreground="#1E293B" />
-                                    </StackPanel>
-
-                                    <UniformGrid Columns="2" HorizontalAlignment="Left" Margin="0,2,0,0">
-                                        <StackPanel Margin="0,0,24,0">
-                                            <TextBlock Text="From Date" FontSize="12" Foreground="#64748B" Margin="0,0,0,6" />
-                                            <DatePicker x:Name="SyncFromDatePicker" Width="180" Background="{StaticResource BaseWhite}" ui:ControlHelper.Header="" SelectedDateFormat="Long"/>
-                                        </StackPanel>
-                                        <StackPanel>
-                                            <TextBlock Text="To Date" FontSize="12" Foreground="#64748B" Margin="0,0,0,6" />
-                                            <DatePicker x:Name="SyncToDatePicker" Width="180" Background="{StaticResource BaseWhite}" ui:ControlHelper.Header="" SelectedDateFormat="Long"/>
-                                        </StackPanel>
-                                    </UniformGrid>
-
-                                    <!-- Safe Sync Options -->
-                                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                                        <StackPanel Margin="0,0,24,0">
-                                            <TextBlock Text="Sync Mode" FontSize="12" Foreground="#64748B" Margin="0,0,0,6" />
-                                            <ComboBox x:Name="SyncModeCombo" Width="160" SelectedIndex="0" SelectionChanged="SyncModeCombo_SelectionChanged" ui:ControlHelper.CornerRadius="4">
-                                                <ComboBoxItem Content="Auto (Adaptive)"/>
-                                                <ComboBoxItem Content="Safe (Controlled)"/>
-                                            </ComboBox>
-                                        </StackPanel>
-                                        <StackPanel x:Name="BatchSizePanel" Visibility="Collapsed">
-                                            <TextBlock Text="Batch Size" FontSize="12" Foreground="#64748B" Margin="0,0,0,6" />
-                                            <ComboBox x:Name="BatchSizeCombo" Width="100" SelectedIndex="1" ui:ControlHelper.CornerRadius="4">
-                                                <ComboBoxItem Content="10"/>
-                                                <ComboBoxItem Content="25"/>
-                                                <ComboBoxItem Content="50"/>
-                                                <ComboBoxItem Content="100"/>
-                                            </ComboBox>
-                                        </StackPanel>
-                                    </StackPanel>
-
-                                    <!-- Continuous Sync Toggle -->
-                                    <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
-                                        <ui:ToggleSwitch x:Name="ContinuousSyncToggle" 
-                                                       Header="Continuous Background Sync" 
-                                                       OffContent="Disabled" 
-                                                       OnContent="Enabled"
-                                                       Toggled="ContinuousSyncToggle_Toggled"
-                                                       ui:ControlHelper.CornerRadius="4"/>
-                                        <TextBlock Text="Syncs every 5 minutes automatically." 
-                                                   VerticalAlignment="Bottom" Margin="12,0,0,8" 
-                                                   FontSize="11" Foreground="#64748B" FontStyle="Italic"/>
-                                    </StackPanel>
-                                </StackPanel>
-
-                                <!-- Action Section -->
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="24,0,0,0">
-                                    <Button x:Name="SyncButton" 
-                                            Click="Sync_Click"
-                                            Style="{StaticResource PrimaryButtonStyle}"
-                                            Padding="32,0"
-                                            Height="52"
-                                            Width="280"
-                                            Cursor="Hand"
-                                            ui:ControlHelper.CornerRadius="12"
-                                            Background="{StaticResource PrimaryTeal}"
-                                            Foreground="White">
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                            <ui:SymbolIcon Symbol="Sync" Margin="0,0,12,0" Foreground="White"/>
-                                            <TextBlock Text="Initiate Synchronization" FontSize="17" FontWeight="SemiBold" />
-                                        </StackPanel>
-                                    </Button>
-                                </StackPanel>
-                            </Grid>
-                        </Border>
-                    </StackPanel>
-                </Grid>
-            </Border>
-
-            <!-- Sidebar Info Panel -->
-            <StackPanel Grid.Column="1">
-                <Border Background="#F0FDFA" CornerRadius="12" Padding="24" Margin="0,0,0,20" BorderBrush="#CCF2F4" BorderThickness="1">
-                    <StackPanel>
-                        <TextBlock Text="💡 Pro Sync Tips" FontSize="16" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}" Margin="0,0,0,12"/>
-                        <TextBlock Text="• Ensure Tally ERP 9 is running in the background." FontSize="13" Foreground="{StaticResource CharcoalText}" Margin="0,0,0,8" TextWrapping="Wrap" Opacity="0.8"/>
-                        <TextBlock Text="• Avoid closing the application during the sync process." FontSize="13" Foreground="{StaticResource CharcoalText}" Margin="0,0,0,8" TextWrapping="Wrap" Opacity="0.8"/>
-                        <TextBlock Text="• Check the Activity Log if you encounter any warnings." FontSize="13" Foreground="{StaticResource CharcoalText}" Margin="0,0,0,8" TextWrapping="Wrap" Opacity="0.8"/>
                     </StackPanel>
                 </Border>
 
-                <Border Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="24" Effect="{StaticResource CardShadow}" BorderBrush="#E2E8F0" BorderThickness="1">
-                    <StackPanel>
-                        <TextBlock Text="Security &amp; Integrity" FontSize="16" FontWeight="Bold" Foreground="{StaticResource CharcoalText}" Margin="0,0,0,12"/>
-                        <TextBlock Text="All data is synchronized locally to your warehouse. No financial figures are uploaded to external servers during this process." 
-                                   FontSize="12" Foreground="{StaticResource GrayText}" TextWrapping="Wrap" LineHeight="18"/>
+                <!-- 1. Sync Progress Card -->
+                <Border Grid.Row="1" Background="{StaticResource BaseWhite}" CornerRadius="16" Padding="28" 
+                        BorderBrush="#E2E8F0" BorderThickness="1"
+                        Effect="{StaticResource CardShadow}" Margin="0,0,0,24">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
                         
-                        <Border Background="#F1F5F9" CornerRadius="6" Padding="12" Margin="0,16,0,0">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="Permissions" Foreground="{StaticResource GrayText}" Margin="0,0,10,0"/>
-                                <TextBlock Text="Admin Mode Active" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource GrayText}" VerticalAlignment="Center"/>
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                <TextBlock Text="Sync Status: " FontSize="16" Foreground="{StaticResource CharcoalText}" Opacity="0.7"/>
+                                <TextBlock x:Name="SyncStatusLabel" Text="IDLE" FontSize="16" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}"/>
+                            </StackPanel>
+
+                            <TextBlock x:Name="CurrentStepText" Text="Waiting for initialization..." FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}" Margin="0,0,0,6"/>
+                            <TextBlock x:Name="CurrentStepDetailText" Text="Records will appear here once synchronization starts." FontSize="13" Foreground="{StaticResource GrayText}" Margin="0,0,0,24"/>
+
+                            <ProgressBar x:Name="SyncProgressBar" Height="8" ui:ControlHelper.CornerRadius="4" 
+                                       Value="0" IsIndeterminate="False" Foreground="{StaticResource PrimaryTeal}" Background="#F1F5F9"/>
+                            <TextBlock x:Name="SyncProgressCaptionText" Text="0% complete" FontSize="12" Foreground="{StaticResource GrayText}" Margin="0,8,0,0" HorizontalAlignment="Right"/>
+                        </StackPanel>
+
+                        <Border Grid.Column="1" VerticalAlignment="Top" Background="#F0F9FF" Padding="24,20" CornerRadius="12" Margin="32,0,0,0">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="SYNC BREAKDOWN" FontSize="11" FontWeight="Bold" Foreground="#0369A1" HorizontalAlignment="Center" Margin="0,0,16,8"/>
+                                <UniformGrid Columns="3" Width="300">
+                                    <StackPanel HorizontalAlignment="Center">
+                                        <TextBlock Text="Fetched" FontSize="11" Foreground="#0369A1" HorizontalAlignment="Center"/>
+                                        <TextBlock x:Name="FetchedCountText" Text="0" FontSize="20" FontWeight="Bold" Foreground="#0C4A6E" HorizontalAlignment="Center"/>
+                                    </StackPanel>
+                                    <StackPanel HorizontalAlignment="Center">
+                                        <TextBlock Text="Saved" FontSize="11" Foreground="#0369A1" HorizontalAlignment="Center"/>
+                                        <TextBlock x:Name="SavedCountText" Text="0" FontSize="20" FontWeight="Bold" Foreground="#0C4A6E" HorizontalAlignment="Center"/>
+                                    </StackPanel>
+                                    <StackPanel HorizontalAlignment="Center">
+                                        <TextBlock Text="Skipped" FontSize="11" Foreground="#0369A1" HorizontalAlignment="Center"/>
+                                        <TextBlock x:Name="SkippedCountText" Text="0" FontSize="20" FontWeight="Bold" Foreground="#0C4A6E" HorizontalAlignment="Center"/>
+                                    </StackPanel>
+                                </UniformGrid>
+                                <TextBlock x:Name="VoucherRateText" Text="0 /sec" FontSize="11" Foreground="#0369A1" HorizontalAlignment="Center" Margin="0,12,0,0"/>
                             </StackPanel>
                         </Border>
+                    </Grid>
+                </Border>
+
+                <!-- 2. Activity Log (Structured Grid) -->
+                <Border Grid.Row="1" Background="{StaticResource BaseWhite}" CornerRadius="16" Padding="0" 
+                        BorderBrush="#E2E8F0" BorderThickness="1"
+                        Effect="{StaticResource CardShadow}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        
+                        <Border Grid.Row="0" Background="#F8FAFC" Padding="20,12" CornerRadius="16,16,0,0" BorderBrush="#E2E8F0" BorderThickness="0,0,0,1">
+                            <DockPanel>
+                                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                                    <ui:SymbolIcon Symbol="List" Margin="0,0,10,0" Foreground="{StaticResource PrimaryTeal}"/>
+                                    <TextBlock Text="Activity Logs &amp; Diagnostics" FontWeight="SemiBold" Foreground="{StaticResource PrimaryTeal}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                
+                                <Button Click="ExpandLogs_Click" 
+                                        Style="{StaticResource GhostButtonStyle}" 
+                                        Padding="8,2" FontSize="11" Height="24"
+                                        DockPanel.Dock="Right" HorizontalAlignment="Right"
+                                        ui:ControlHelper.CornerRadius="12">
+                                    <Button.Content>
+                                        <StackPanel Orientation="Horizontal">
+                                            <ui:SymbolIcon Symbol="FullScreen" Margin="0,0,4,0"/>
+                                            <TextBlock Text="Maximize" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button.Content>
+                                </Button>
+                            </DockPanel>
+                        </Border>
+
+                        <DataGrid Grid.Row="1" x:Name="LiveLogGrid" 
+                                  AutoGenerateColumns="False" 
+                                  IsReadOnly="True" 
+                                  HeadersVisibility="Column"
+                                  Background="Transparent"
+                                  BorderThickness="0" 
+                                  GridLinesVisibility="Horizontal"
+                                  HorizontalGridLinesBrush="#F1F5F9">
+                            <DataGrid.Resources>
+                                <Style TargetType="DataGridRow">
+                                    <Setter Property="Background" Value="{Binding Level, Converter={StaticResource LevelToBrush}}"/>
+                                    <Setter Property="Foreground" Value="{StaticResource CharcoalText}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Level}" Value="ERROR">
+                                            <Setter Property="Foreground" Value="White"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Level}" Value="WARNING">
+                                            <Setter Property="Foreground" Value="Black"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Level}" Value="SUCCESS">
+                                            <Setter Property="Foreground" Value="White"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGrid.Resources>
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="TIME" Binding="{Binding Timestamp, StringFormat=\{0:HH:mm:ss\}}" Width="100"/>
+                                <DataGridTextColumn Header="SOURCE" Binding="{Binding Module}" Width="120"/>
+                                <DataGridTextColumn Header="LEVEL" Binding="{Binding Level}" Width="80"/>
+                                <DataGridTextColumn Header="MESSAGE" Binding="{Binding Message}" Width="*"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- RIGHT: Configuration Sidebar -->
+            <StackPanel Grid.Column="1">
+                <Border Background="{StaticResource BaseWhite}" CornerRadius="16" Padding="24" 
+                        BorderBrush="#E2E8F0" BorderThickness="1"
+                        Effect="{StaticResource CardShadow}" Margin="0,0,0,24">
+                    <StackPanel>
+                        <TextBlock Text="Sync Configuration" FontSize="18" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}" Margin="0,0,0,20"/>
+                        
+                        <TextBlock Text="From Date" FontSize="12" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,6" />
+                        <DatePicker x:Name="SyncFromDatePicker" Width="240" HorizontalAlignment="Left" Margin="0,0,0,20"
+                                  Style="{StaticResource DefaultDatePickerStyle}" SelectedDateFormat="Long"/>
+
+                        <TextBlock Text="To Date" FontSize="12" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,6" />
+                        <DatePicker x:Name="SyncToDatePicker" Width="240" HorizontalAlignment="Left" Margin="0,0,0,20"
+                                  Style="{StaticResource DefaultDatePickerStyle}" SelectedDateFormat="Long"/>
+
+                        <TextBlock Text="Sync Mode" FontSize="12" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,6" />
+                        <ComboBox x:Name="SyncModeCombo" Width="240" HorizontalAlignment="Left" Margin="0,0,0,24">
+                            <ComboBoxItem Content="Auto (Adaptive)" IsSelected="True"/>
+                            <ComboBoxItem Content="Delta (New Records Only)"/>
+                            <ComboBoxItem Content="Full (Complete Re-Sync)"/>
+                            <ComboBoxItem Content="SafeMode (Low Memory)"/>
+                        </ComboBox>
+
+                        <!-- Frequency Toggle -->
+                        <TextBlock Text="Sync Frequency" FontSize="12" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,8" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,32">
+                            <ui:ToggleSwitch x:Name="ContinuousToggle" 
+                                           Header="Continuous Sync" 
+                                           OnContent="Enabled (5m Poll)" 
+                                           OffContent="Disabled (Manual Only)"
+                                           Toggled="ContinuousToggle_Toggled"
+                                           FontSize="13"/>
+                        </StackPanel>
+
+                        <Button x:Name="SyncButton" 
+                                Click="Sync_Click"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Height="44"
+                                Width="240"
+                                HorizontalAlignment="Left"
+                                Background="{StaticResource LightTealBg}"
+                                Foreground="{StaticResource PrimaryTeal}"
+                                BorderBrush="{StaticResource PrimaryTeal}"
+                                BorderThickness="1.5">
+                            <StackPanel Orientation="Horizontal">
+                                <ui:SymbolIcon Symbol="Sync" Margin="0,0,8,0" />
+                                <TextBlock x:Name="SyncButtonText" Text="Start Sync" FontSize="14" FontWeight="Bold" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Border>
+
+                <!-- Quick Diagnostic Info -->
+                <Border Background="#F9FCFB" CornerRadius="16" Padding="20" BorderBrush="#D1EDEA" BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock Text="Diagnostic Summary" FontSize="13" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}" Margin="0,0,0,12"/>
+                        <Grid Margin="0,0,0,8">
+                            <TextBlock Text="Tally Endpoint" FontSize="12" Foreground="#64748B"/>
+                            <TextBlock Text="Running" FontSize="12" Foreground="#10B981" HorizontalAlignment="Right" FontWeight="SemiBold"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <TextBlock Text="Local Meta-Cache" FontSize="12" Foreground="#64748B"/>
+                            <TextBlock x:Name="IsMetaCachedText" Text="Ready" FontSize="12" Foreground="#10B981" HorizontalAlignment="Right" FontWeight="SemiBold"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <TextBlock Text="Memory Usage" FontSize="12" Foreground="#64748B"/>
+                            <TextBlock x:Name="MemoryUsageText" Text="0 MB" FontSize="12" Foreground="{StaticResource PrimaryTeal}" HorizontalAlignment="Right" FontWeight="SemiBold"/>
+                        </Grid>
+                        <Grid>
+                            <TextBlock Text="Last Background Sync" FontSize="12" Foreground="#64748B"/>
+                            <TextBlock x:Name="LastSyncTimeText" Text="Never" FontSize="12" Foreground="{StaticResource PrimaryTeal}" HorizontalAlignment="Right" FontWeight="SemiBold"/>
+                        </Grid>
                     </StackPanel>
                 </Border>
             </StackPanel>

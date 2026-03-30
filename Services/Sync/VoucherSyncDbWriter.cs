@@ -19,8 +19,12 @@ namespace Acczite20.Services.Sync
         private readonly SyncStateMonitor _syncMonitor;
         private readonly VoucherSyncProgressAggregator _progress;
         private readonly IMongoProjector _projector;
+        private readonly ISyncControlService _syncControl;
         private readonly int _batchSize;
         private readonly System.Diagnostics.Stopwatch _runStopwatch;
+        private readonly List<Voucher> _vouchers = new();
+        private int _batchCounter = 0;
+        private bool _countLogged = false;
 
         public VoucherSyncDbWriter(
             Guid orgId,
@@ -29,6 +33,7 @@ namespace Acczite20.Services.Sync
             VoucherSyncProgressAggregator progress,
             System.Diagnostics.Stopwatch runStopwatch,
             IMongoProjector projector,
+            ISyncControlService syncControl,
             int batchSize = 500)
         {
             _orgId = orgId;
@@ -37,37 +42,57 @@ namespace Acczite20.Services.Sync
             _progress = progress;
             _runStopwatch = runStopwatch;
             _projector = projector;
+            _syncControl = syncControl;
             _batchSize = batchSize;
         }
 
-        public async Task RunAsync(ChannelReader<Voucher> reader, CancellationToken ct)
+        private void Guard(Guid orgId, Guid runId, CancellationToken ct)
+        {
+            _syncControl.EnsureOwnership(orgId, runId);
+            ct.ThrowIfCancellationRequested();
+        }
+
+        public async Task RunAsync(Guid orgId, Guid runId, ChannelReader<Voucher> reader, CancellationToken ct)
         {
             using var scope = _scopeFactory.CreateScope();
             var cache = scope.ServiceProvider.GetRequiredService<MasterDataCache>();
             await cache.InitializeAsync(_orgId);
 
             var handler = scope.ServiceProvider.GetRequiredService<BulkInsertHandler>();
-            var batch = new List<Voucher>(_batchSize);
 
             await foreach (var voucher in reader.ReadAllAsync(ct))
             {
-                batch.Add(voucher);
-                if (batch.Count >= _batchSize)
+                _vouchers.Add(voucher);
+                if (_vouchers.Count >= _batchSize)
                 {
-                    await FlushAsync(handler, batch, ct);
+                    _batchCounter++;
+                    await FlushAsync(orgId, runId, handler, ct);
                 }
             }
 
-            if (batch.Count > 0)
+            if (_vouchers.Any())
             {
-                await FlushAsync(handler, batch, ct);
+                _batchCounter++;
+                await FlushAsync(orgId, runId, handler, ct);
             }
         }
 
-        private async Task FlushAsync(BulkInsertHandler handler, List<Voucher> batch, CancellationToken ct)
+        private async Task FlushAsync(Guid orgId, Guid runId, BulkInsertHandler handler, CancellationToken ct)
         {
-            var vouchersToWrite = batch.ToList();
-            batch.Clear();
+            if (!_countLogged && _vouchers.Count > 0)
+            {
+                // Only log if batch counter is a multiple of 5, or if it's the very first/last batch
+                if (_batchCounter == 1 || _batchCounter % 5 == 0)
+                {
+                    _syncMonitor.AddLog($"Incoming batch: {_vouchers.Count} vouchers. Writing to Database...", "DEBUG", "SQL");
+                }
+            }
+
+            Guard(orgId, runId, ct);
+            _syncControl.UpdateHeartbeat(orgId, runId, $"Saving {_vouchers.Count} vouchers", _progress.Snapshot().Written);
+
+            var vouchersToWrite = _vouchers.ToList();
+            _vouchers.Clear();
 
             var ledgerCount = vouchersToWrite.Sum(v => v.LedgerEntries?.Count ?? 0);
             var inventoryCount = vouchersToWrite.Sum(v => v.InventoryAllocations?.Count ?? 0);
@@ -76,6 +101,8 @@ namespace Acczite20.Services.Sync
             var sw = System.Diagnostics.Stopwatch.StartNew();
             await handler.BulkInsertVouchersAsync(vouchersToWrite);
             sw.Stop();
+ 
+            Guard(orgId, runId, ct); // 🛡️ Post-I/O Guard
 
             // Project to Mongo (Decoupled & Eventually Consistent)
             foreach (var v in vouchersToWrite)

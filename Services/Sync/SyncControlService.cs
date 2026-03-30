@@ -8,6 +8,7 @@ namespace Acczite20.Services.Sync
     public class SyncControlService : ISyncControlService
     {
         private readonly ConcurrentDictionary<Guid, SyncState> _states = new();
+        private readonly ConcurrentDictionary<Guid, object> _locks = new();
 
         public SyncState GetState(Guid orgId)
         {
@@ -18,22 +19,81 @@ namespace Acczite20.Services.Sync
             });
         }
 
-        public bool TryStart(Guid orgId, SyncOwner owner)
+        private object GetLock(Guid orgId) => _locks.GetOrAdd(orgId, _ => new object());
+
+        public bool TryStart(Guid orgId, SyncOwner owner, Guid runId)
+        {
+            lock (GetLock(orgId))
+            {
+                var state = GetState(orgId);
+
+                // Permissive re-entry for SAME execution chain
+                if (state.Status == SyncLifecycle.Starting || state.Status == SyncLifecycle.Running)
+                {
+                    if (state.CurrentRunId == runId) return true;
+                    return false; // REAL conflict
+                }
+
+                state.Cts?.Cancel();
+                state.Cts = new CancellationTokenSource();
+
+                state.IsPaused = false;
+                state.Status = SyncLifecycle.Starting;
+                state.Owner = owner;
+                state.CurrentRunId = runId;
+                state.StartedAt = DateTime.UtcNow;
+                state.LastHeartbeat = DateTime.UtcNow;
+                state.FirstHeartbeatDeadline = DateTime.UtcNow.AddMinutes(2);
+                state.LastProgressCount = 0;
+                state.LastProgressTime = DateTime.UtcNow;
+                state.CurrentPhase = "Initializing";
+
+                return true;
+            }
+        }
+
+        public void EnsureOwnership(Guid orgId, Guid runId)
         {
             var state = GetState(orgId);
+            if (state.CurrentRunId != runId)
+            {
+                throw new InvalidOperationException($"CRITICAL: Sync execution chain [RunId={runId}] lost ownership of Organization [OrgId={orgId}]. Active lease belongs to [RunId={state.CurrentRunId ?? Guid.Empty}]. Execution aborted.");
+            }
+        }
 
-            if (state.Status == SyncLifecycle.Running)
-                return false;
+        public void UpdateHeartbeat(Guid orgId, Guid runId, string stage, int recordsProcessed = 0)
+        {
+            var state = GetState(orgId);
+            if (state.CurrentRunId != runId) return;
 
-            state.Cts?.Cancel();
-            state.Cts = new CancellationTokenSource();
+            state.LastHeartbeat = DateTime.UtcNow;
 
-            state.IsPaused = false;
-            state.Status = SyncLifecycle.Running;
-            state.Owner = owner;
-            state.StartedAt = DateTime.UtcNow;
+            // When the stage changes, the previous stage completed successfully — snapshot it.
+            if (!string.IsNullOrEmpty(state.CurrentPhase) && state.CurrentPhase != stage)
+                state.LastCompletedStage = state.CurrentPhase;
 
-            return true;
+            state.CurrentPhase = stage;
+
+            // Tweak 2: advance progress cursor only when new records are reported
+            if (recordsProcessed > state.LastProgressCount)
+            {
+                state.LastProgressCount = recordsProcessed;
+                state.LastProgressTime = DateTime.UtcNow;
+            }
+        }
+
+        public void Complete(Guid orgId, Guid runId, SyncLifecycle finalStatus)
+        {
+            lock (GetLock(orgId))
+            {
+                var state = GetState(orgId);
+                if (state.CurrentRunId == runId)
+                {
+                    state.Status = finalStatus;
+                    state.CurrentRunId = null;
+                    state.CurrentPhase = finalStatus == SyncLifecycle.Completed ? "Idle" : $"Terminated ({finalStatus})";
+                }
+            }
         }
 
         public async Task PauseAsync(Guid orgId)

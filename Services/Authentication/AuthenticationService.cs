@@ -77,6 +77,11 @@ namespace Acczite20.Services.Authentication
                     {
                         session.OrganizationId = orgId;
                     }
+                    else if (!string.IsNullOrWhiteSpace(user.Organization.Id))
+                    {
+                        // MongoDB ObjectId → deterministic GUID (stable across sessions)
+                        session.OrganizationId = ToDeterministicGuid(user.Organization.Id);
+                    }
 
                     session.OrganizationObjectId = user.Organization.Id ?? string.Empty;
                     session.OrganizationName = user.Organization.Name;
@@ -127,6 +132,23 @@ namespace Acczite20.Services.Authentication
             {
                 throw new Exception($"Network connection failed: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Converts any non-GUID string (e.g. MongoDB ObjectId "67a1b2c3d4e5f6...") into a 
+        /// deterministic, stable GUID using SHA256. The same input always produces the same GUID.
+        /// </summary>
+        private static Guid ToDeterministicGuid(string input)
+        {
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(input));
+            // Take first 16 bytes of SHA256 hash to form a GUID
+            var guidBytes = new byte[16];
+            Array.Copy(hash, guidBytes, 16);
+            // Set version 5 (name-based) and variant bits per RFC 4122
+            guidBytes[6] = (byte)((guidBytes[6] & 0x0F) | 0x50);
+            guidBytes[8] = (byte)((guidBytes[8] & 0x3F) | 0x80);
+            return new Guid(guidBytes);
         }
     }
 }

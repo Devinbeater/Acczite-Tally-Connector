@@ -1,11 +1,25 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Acczite20.Services.Sync
 {
+    public enum SyncStatus
+    {
+        Idle,
+        Running,
+        Success,
+        Failed,
+        Cancelled
+    }
+
     public class SyncLogViewModel
     {
         public DateTime Timestamp { get; set; } = DateTime.Now;
@@ -25,7 +39,6 @@ namespace Acczite20.Services.Sync
 
     public class EntitySyncStatus
     {
-        // Frozen brush allocated once for the SUCCESS state (avoids per-access allocation)
         private static readonly System.Windows.Media.SolidColorBrush SuccessBrush;
 
         static EntitySyncStatus()
@@ -40,7 +53,6 @@ namespace Acczite20.Services.Sync
         public int RecordsSynced { get; set; }
         public string SyncStatus { get; set; } = "IDLE";
 
-        // Helpers for UI
         public string StatusText => SyncStatus;
         public System.Windows.Media.Brush StatusColor => SyncStatus switch
         {
@@ -53,7 +65,6 @@ namespace Acczite20.Services.Sync
 
     public class SyncStateMonitor : INotifyPropertyChanged
     {
-        private const int CheckpointSize = 100;
         private static readonly Process _currentProcess = Process.GetCurrentProcess();
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -64,8 +75,44 @@ namespace Acczite20.Services.Sync
 
         private CancellationTokenSource? _metricsCts;
         private DateTime _runStartTime;
-        private int _lastTotalSynced;
-        private DateTime _lastMetricUpdate;
+
+        private SyncStatus _status = SyncStatus.Idle;
+        public SyncStatus Status
+        {
+            get => _status;
+            set { _status = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsSyncing)); }
+        }
+
+        public bool IsSyncing => Status == SyncStatus.Running;
+
+        private string _failureReason = string.Empty;
+        public string FailureReason
+        {
+            get => _failureReason;
+            set { _failureReason = value; OnPropertyChanged(); }
+        }
+
+        // --- Granular Counters ---
+        private int _fetchedCount;
+        public int FetchedCount
+        {
+            get => _fetchedCount;
+            set { _fetchedCount = value; OnPropertyChanged(); }
+        }
+
+        private int _savedCount;
+        public int SavedCount
+        {
+            get => _savedCount;
+            set { _savedCount = value; OnPropertyChanged(); }
+        }
+
+        private int _skippedCount;
+        public int SkippedCount
+        {
+            get => _skippedCount;
+            set { _skippedCount = value; OnPropertyChanged(); }
+        }
 
         private int _totalErrors;
         public int TotalErrors
@@ -74,6 +121,7 @@ namespace Acczite20.Services.Sync
             set { _totalErrors = value; OnPropertyChanged(); }
         }
 
+        // --- Connection Stats ---
         private bool _isMongoConnected;
         public bool IsMongoConnected
         {
@@ -86,6 +134,13 @@ namespace Acczite20.Services.Sync
         {
             get => _isTallyConnected;
             set { _isTallyConnected = value; OnPropertyChanged(); }
+        }
+
+        private DateTime? _lastBackgroundSync;
+        public DateTime? LastBackgroundSync
+        {
+            get => _lastBackgroundSync;
+            set { _lastBackgroundSync = value; OnPropertyChanged(); }
         }
 
         private int _totalRecordsSynced;
@@ -101,55 +156,6 @@ namespace Acczite20.Services.Sync
             }
         }
 
-        private bool _isSyncing;
-        public bool IsSyncing
-        {
-            get => _isSyncing;
-            set
-            {
-                _isSyncing = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(ProgressCaption));
-                OnPropertyChanged(nameof(ProgressCaption));
-                OnPropertyChanged(nameof(LiveMetricsSummary));
-            }
-        }
-
-        private double _mongoProjectionLagMs;
-        public double MongoProjectionLagMs
-        {
-            get => _mongoProjectionLagMs;
-            set { _mongoProjectionLagMs = value; OnPropertyChanged(); OnPropertyChanged(nameof(LiveMetricsSummary)); }
-        }
-
-        private DateTime? _lastMongoProjectedAt;
-        public DateTime? LastMongoProjectedAt
-        {
-            get => _lastMongoProjectedAt;
-            set { _lastMongoProjectedAt = value; OnPropertyChanged(); }
-        }
-
-        private int _mongoQueueDepth;
-        public int MongoQueueDepth
-        {
-            get => _mongoQueueDepth;
-            set { _mongoQueueDepth = value; OnPropertyChanged(); OnPropertyChanged(nameof(LiveMetricsSummary)); }
-        }
-
-        private int _replayQueueSize;
-        public int ReplayQueueSize
-        {
-            get => _replayQueueSize;
-            set { _replayQueueSize = value; OnPropertyChanged(); OnPropertyChanged(nameof(LiveMetricsSummary)); }
-        }
-
-        private bool _isPaused;
-        public bool IsPaused
-        {
-            get => _isPaused;
-            set { _isPaused = value; OnPropertyChanged(); }
-        }
-
         private string _syncMode = "Auto";
         public string SyncMode
         {
@@ -157,100 +163,63 @@ namespace Acczite20.Services.Sync
             set { _syncMode = value; OnPropertyChanged(); OnPropertyChanged(nameof(LiveMetricsSummary)); }
         }
 
-        private int _batchSize = 50; // Conservative default — scheduler grows window if Tally is healthy
+        private int _currentBatchVouchers;
+        public int CurrentBatchVouchers
+        {
+            get => _currentBatchVouchers;
+            set { _currentBatchVouchers = value; OnPropertyChanged(); }
+        }
+
+        private int _batchSize = 150;
         public int BatchSize
         {
             get => _batchSize;
             set { _batchSize = value; OnPropertyChanged(); }
         }
 
-        private string _tallyHealth = "Stable";
-        public string TallyHealth
-        {
-            get => _tallyHealth;
-            set
-            {
-                if (_tallyHealth == value) return;
-                _tallyHealth = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(TallyHealthColor));
-                OnPropertyChanged(nameof(TallyHealthDot));
-            }
-        }
-
-        /// <summary>UI hex color matching Tally health state.</summary>
-        public string TallyHealthColor => TallyHealth switch
-        {
-            "Stable"     => "#10B981",
-            "Slow"       => "#F59E0B",
-            "Overloaded" => "#EF4444",
-            _            => "#6B7280"
-        };
-
-        /// <summary>Dot fill brush for the Tally health indicator.</summary>
-        public System.Windows.Media.SolidColorBrush TallyHealthDot
-        {
-            get
-            {
-                var hex = TallyHealthColor;
-                var r = Convert.ToByte(hex.Substring(1, 2), 16);
-                var g = Convert.ToByte(hex.Substring(3, 2), 16);
-                var b = Convert.ToByte(hex.Substring(5, 2), 16);
-                var brush = new System.Windows.Media.SolidColorBrush(
-                    System.Windows.Media.Color.FromRgb(r, g, b));
-                brush.Freeze();
-                return brush;
-            }
-        }
-
-        private bool _triggerCooldown;
-        public bool TriggerCooldown
-        {
-            get => _triggerCooldown;
-            set { _triggerCooldown = value; OnPropertyChanged(); }
-        }
-
-        // ── Live runtime metrics (updated each chunk by VoucherSyncController) ──
-
-        private int _interBatchDelayMs;
+        private int _interBatchDelayMs = 2000;
         public int InterBatchDelayMs
         {
             get => _interBatchDelayMs;
             set { _interBatchDelayMs = value; OnPropertyChanged(); }
         }
 
-        private double _liveWindowHours;
-        public double LiveWindowHours
+        private double _progressPercent;
+        public double ProgressPercent
         {
-            get => _liveWindowHours;
-            set { _liveWindowHours = value; OnPropertyChanged(); OnPropertyChanged(nameof(LiveMetricsSummary)); }
+            get => _progressPercent;
+            set
+            {
+                _progressPercent = Math.Max(0, Math.Min(100, value));
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(ProgressCaption));
+            }
         }
 
-        private int _liveDelayMs;
-        public int LiveDelayMs
+        private bool _isProgressIndeterminate;
+        public bool IsProgressIndeterminate
         {
-            get => _liveDelayMs;
-            set { _liveDelayMs = value; OnPropertyChanged(); OnPropertyChanged(nameof(LiveMetricsSummary)); }
+            get => _isProgressIndeterminate;
+            set { _isProgressIndeterminate = value; OnPropertyChanged(); }
         }
 
-        private int _liveRetries;
-        public int LiveRetries
+        private string _currentStage = "Idle";
+        public string CurrentStage
         {
-            get => _liveRetries;
-            set { _liveRetries = value; OnPropertyChanged(); OnPropertyChanged(nameof(LiveMetricsSummary)); }
+            get => _currentStage;
+            set { _currentStage = value; OnPropertyChanged(); }
         }
 
-        /// <summary>One-line metrics strip shown in the UI header area.</summary>
-        public string LiveMetricsSummary => IsSyncing
-            ? $"Window {LiveWindowHours:0.#}h | Lag {MongoProjectionLagMs:N0}ms | Q {MongoQueueDepth} | Replay {ReplayQueueSize} | Mode {SyncMode}"
-            : "Sync engine idle";
-
-        private DateTime? _lastSyncTime;
-        public DateTime? LastSyncTime
+        private string _currentStageDetail = "Waiting for initialization.";
+        public string CurrentStageDetail
         {
-            get => _lastSyncTime;
-            set { _lastSyncTime = value; OnPropertyChanged(); }
+            get => _currentStageDetail;
+            set { _currentStageDetail = value; OnPropertyChanged(); }
         }
+
+        public string ProgressCaption => Status == SyncStatus.Running
+            ? $"{Math.Round(ProgressPercent):0}% of the current sync pipeline"
+            : (Status == SyncStatus.Success ? "Sync successful" : "Sync engine idle");
 
         private string _memoryUsage = "0 MB";
         public string MemoryUsage
@@ -266,145 +235,95 @@ namespace Acczite20.Services.Sync
             set { _vouchersPerSecond = value; OnPropertyChanged(); }
         }
 
-        private string _currentStage = "Idle";
-        public string CurrentStage
+        // --- Backwards Compatibility / Legacy Props ---
+        private string _tallyHealth = "Stable";
+        public string TallyHealth
         {
-            get => _currentStage;
-            set { _currentStage = value; OnPropertyChanged(); }
+            get => _tallyHealth;
+            set { _tallyHealth = value; OnPropertyChanged(); }
         }
 
-        private string _currentStageDetail = "Waiting for the next sync cycle.";
-        public string CurrentStageDetail
+        private double _liveWindowHours;
+        public double LiveWindowHours
         {
-            get => _currentStageDetail;
-            set { _currentStageDetail = value; OnPropertyChanged(); }
+            get => _liveWindowHours;
+            set { _liveWindowHours = value; OnPropertyChanged(); }
         }
 
-        private double _progressPercent;
-        public double ProgressPercent
+        private int _liveDelayMs;
+        public int LiveDelayMs
         {
-            get => _progressPercent;
-            set
-            {
-                _progressPercent = Math.Max(0, Math.Min(100, value));
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(ProgressCaption));
-            }
+            get => _liveDelayMs;
+            set { _liveDelayMs = value; OnPropertyChanged(); }
         }
 
-        private int _currentBatchVouchers;
-        public int CurrentBatchVouchers
+        private int _liveRetries;
+        public int LiveRetries
         {
-            get => _currentBatchVouchers;
-            set
-            {
-                _currentBatchVouchers = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(LastBatchSummary));
-            }
+            get => _liveRetries;
+            set { _liveRetries = value; OnPropertyChanged(); }
         }
 
-        private int _currentBatchLedgerEntries;
-        public int CurrentBatchLedgerEntries
+        private bool _isPaused;
+        public bool IsPaused
         {
-            get => _currentBatchLedgerEntries;
-            set
-            {
-                _currentBatchLedgerEntries = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(LastBatchSummary));
-            }
+            get => _isPaused;
+            set { _isPaused = value; OnPropertyChanged(); }
         }
 
-        private int _currentBatchInventoryEntries;
-        public int CurrentBatchInventoryEntries
+        private DateTime? _lastSyncTime;
+        public DateTime? LastSyncTime
         {
-            get => _currentBatchInventoryEntries;
-            set
-            {
-                _currentBatchInventoryEntries = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(LastBatchSummary));
-            }
+            get => _lastSyncTime;
+            set { _lastSyncTime = value; OnPropertyChanged(); }
         }
 
-        private int _currentBatchBillAllocations;
-        public int CurrentBatchBillAllocations
+        private int _mongoQueueDepth;
+        public int MongoQueueDepth
         {
-            get => _currentBatchBillAllocations;
-            set
-            {
-                _currentBatchBillAllocations = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(LastBatchSummary));
-            }
+            get => _mongoQueueDepth;
+            set { _mongoQueueDepth = value; OnPropertyChanged(); }
         }
 
-        private bool _isProgressIndeterminate;
-        public bool IsProgressIndeterminate
+        private DateTime? _lastMongoProjectedAt;
+        public DateTime? LastMongoProjectedAt
         {
-            get => _isProgressIndeterminate;
-            set { _isProgressIndeterminate = value; OnPropertyChanged(); }
+            get => _lastMongoProjectedAt;
+            set { _lastMongoProjectedAt = value; OnPropertyChanged(); }
         }
 
-        public string ProgressCaption => IsSyncing
-            ? $"{Math.Round(ProgressPercent):0}% of the current sync pipeline"
-            : "Sync engine idle";
-
-        public string CheckpointStatus
+        private long _mongoProjectionLagMs;
+        public long MongoProjectionLagMs
         {
-            get
-            {
-                if (TotalRecordsSynced <= 0)
-                {
-                    return $"Next checkpoint at {CheckpointSize:N0} synced records";
-                }
-
-                var nextCheckpoint = ((TotalRecordsSynced / CheckpointSize) + 1) * CheckpointSize;
-                return $"{TotalRecordsSynced:N0} synced so far | next checkpoint {nextCheckpoint:N0}";
-            }
+            get => _mongoProjectionLagMs;
+            set { _mongoProjectionLagMs = value; OnPropertyChanged(); }
         }
 
-        public string LastBatchSummary => CurrentBatchVouchers <= 0
-            ? "Waiting for the first insert batch"
-            : $"Last batch {CurrentBatchVouchers:N0} vch | {CurrentBatchLedgerEntries:N0} ldg | {CurrentBatchInventoryEntries:N0} inv | {CurrentBatchBillAllocations:N0} bills";
-    
-
-        public void RecordError(string masterId, string reference, string error)
+        private int _replayQueueSize;
+        public int ReplayQueueSize
         {
-            TotalErrors++;
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-            {
-                DeadLetterQueue.Add(new FailedSyncRecord 
-                { 
-                    TallyMasterId = masterId, 
-                    Reference = reference, 
-                    Error = error 
-                });
-                
-                if (DeadLetterQueue.Count > 1000) DeadLetterQueue.RemoveAt(0); // Cap size
-            });
-            
-            AddLog($"Voucher {reference} failed: {error}", "ERROR", "SYNC");
+            get => _replayQueueSize;
+            set { _replayQueueSize = value; OnPropertyChanged(); }
         }
 
-        public void BeginRun(string title, string description)
+        public string CheckpointStatus => $"{TotalRecordsSynced:N0} records synced so far";
+        public string LastBatchSummary => $"Current Run Summary: Fetched {FetchedCount:N0}, Saved {SavedCount:N0}";
+        public string LiveMetricsSummary => $"Mode: {SyncMode} | Progress: {ProgressPercent:0}%";
+
+        public void BeginRun(string stage, string detail)
         {
-            _runStartTime = DateTime.Now;
-            _lastTotalSynced = 0;
-            _lastMetricUpdate = DateTime.Now;
-            CurrentBatchVouchers = 0;
-            CurrentBatchLedgerEntries = 0;
-            CurrentBatchInventoryEntries = 0;
-            CurrentBatchBillAllocations = 0;
-            VouchersPerSecond = 0;
-            MemoryUsage = GetCurrentMemoryUsage();
-            CurrentStage = title;
-            CurrentStageDetail = description;
+            Status = SyncStatus.Running;
+            CurrentStage = stage;
+            CurrentStageDetail = detail;
+            FetchedCount = 0;
+            SavedCount = 0;
+            SkippedCount = 0;
             ProgressPercent = 0;
             IsProgressIndeterminate = true;
-            IsSyncing = true;
-
+            FailureReason = string.Empty;
+            TotalRecordsSynced = 0;
+            _runStartTime = DateTime.Now;
+            
             StartBackgroundMetrics();
         }
 
@@ -420,17 +339,13 @@ namespace Acczite20.Services.Sync
                 {
                     while (!token.IsCancellationRequested && IsSyncing)
                     {
-                        UpdateMemoryOnly();
+                        MemoryUsage = GetCurrentMemoryUsage();
+                        LastBackgroundSync = DateTime.Now;
                         await Task.Delay(2000, token);
                     }
                 }
                 catch (OperationCanceledException) { }
             }, token);
-        }
-
-        private void UpdateMemoryOnly()
-        {
-            MemoryUsage = GetCurrentMemoryUsage();
         }
 
         private string GetCurrentMemoryUsage()
@@ -443,117 +358,100 @@ namespace Acczite20.Services.Sync
             catch { return "0 MB"; }
         }
 
-        public void SetStage(string stage, string detail, double progressPercent, bool isIndeterminate = false)
-        {
-            CurrentStage = stage;
-            CurrentStageDetail = detail;
-            ProgressPercent = progressPercent;
-            IsProgressIndeterminate = isIndeterminate;
-        }
-
-        public void RecordInsertedBatch(int vouchers, int ledgerEntries, int inventoryEntries, int billAllocations, double elapsedSeconds)
-        {
-            CurrentBatchVouchers = vouchers;
-            CurrentBatchLedgerEntries = ledgerEntries;
-            CurrentBatchInventoryEntries = inventoryEntries;
-            CurrentBatchBillAllocations = billAllocations;
-            TotalRecordsSynced += vouchers;
-            UpdateMetrics(TotalRecordsSynced, elapsedSeconds);
-
-            var stageProgress = vouchers > 0
-                ? Math.Min(94, 58 + (Math.Log10(TotalRecordsSynced + 1) * 16))
-                : ProgressPercent;
-
-            SetStage(
-                "Syncing vouchers",
-                $"Committed {TotalRecordsSynced:N0} vouchers to the database.",
-                stageProgress,
-                false);
-        }
-
         public void CompleteRun(string detail)
         {
-            _metricsCts?.Cancel();
-            IsProgressIndeterminate = false;
+            Status = SyncStatus.Success;
             ProgressPercent = 100;
+            IsProgressIndeterminate = false;
             CurrentStage = "Sync complete";
             CurrentStageDetail = detail;
-            LastSyncTime = DateTime.Now;
-            IsSyncing = false;
+            _lastSyncTime = DateTime.Now;
+            _metricsCts?.Cancel();
         }
 
-        public void FailRun(string detail)
+        public void FailRun(string reason)
         {
-            _metricsCts?.Cancel();
+            Status = SyncStatus.Failed;
+            FailureReason = reason;
             IsProgressIndeterminate = false;
-            ProgressPercent = Math.Max(ProgressPercent, 15);
             CurrentStage = "Sync failed";
-            CurrentStageDetail = detail;
-            IsSyncing = false;
+            CurrentStageDetail = reason;
+            _metricsCts?.Cancel();
         }
 
         public void CancelRun(string detail)
         {
-            IsProgressIndeterminate = false;
+            Status = SyncStatus.Cancelled;
             CurrentStage = "Sync cancelled";
             CurrentStageDetail = detail;
-            IsSyncing = false;
+            _metricsCts?.Cancel();
         }
 
-        private readonly System.Collections.Generic.Queue<double> _rateSamples = new(10);
-
-        public void UpdateMetrics(int totalSynced, double elapsedSeconds)
+        public void SetStage(string stage, string detail, double progress, bool isIndeterminate = false)
         {
-            var now = DateTime.Now;
-            var timeSinceLastUpdate = (now - _lastMetricUpdate).TotalSeconds;
-            
-            if (timeSinceLastUpdate >= 1.0)
-            {
-                var batchSize = totalSynced - _lastTotalSynced;
-                if (batchSize >= 0)
-                {
-                    double instantRate = batchSize / timeSinceLastUpdate;
-                    
-                    // Simple rolling average
-                    _rateSamples.Enqueue(instantRate);
-                    if (_rateSamples.Count > 5) _rateSamples.Dequeue();
-                    
-                    VouchersPerSecond = Math.Round(_rateSamples.Average(), 1);
-                }
-                
-                _lastTotalSynced = totalSynced;
-                _lastMetricUpdate = now;
-            }
-            else if (VouchersPerSecond == 0 && elapsedSeconds > 0)
-            {
-                VouchersPerSecond = Math.Round(totalSynced / elapsedSeconds, 1);
-            }
-            
-            MemoryUsage = GetCurrentMemoryUsage();
+            CurrentStage = stage;
+            CurrentStageDetail = detail;
+            ProgressPercent = progress;
+            IsProgressIndeterminate = isIndeterminate;
         }
 
         public void AddLog(string message, string level = "INFO", string module = "SYSTEM")
         {
             var app = System.Windows.Application.Current;
-            if (app == null)
+            if (app == null) return;
+
+            app.Dispatcher.BeginInvoke(() =>
             {
-                // Fallback for non-UI environments or early startup
-                return;
+                try
+                {
+                    Logs.Add(new SyncLogViewModel { Message = message, Level = level, Module = module });
+                    if (Logs.Count > 1000) Logs.RemoveAt(0);
+                }
+                catch { }
+            });
+        }
+
+        public void Reset()
+        {
+            System.Windows.Application.Current?.Dispatcher?.Invoke(() =>
+            {
+                Logs.Clear();
+                Status = SyncStatus.Idle;
+                TotalRecordsSynced = 0;
+                FetchedCount = 0;
+                SavedCount = 0;
+                SkippedCount = 0;
+                ProgressPercent = 0;
+                FailureReason = string.Empty;
+            });
+        }
+
+        public void RecordInsertedBatch(int vCount, int lCount, int iCount, int bCount, double elapsedSeconds)
+        {
+            SavedCount += vCount;
+            TotalRecordsSynced = SavedCount;
+            
+            if (elapsedSeconds > 0)
+            {
+                VouchersPerSecond = SavedCount / elapsedSeconds;
             }
 
-            try
+            OnPropertyChanged(nameof(CheckpointStatus));
+            OnPropertyChanged(nameof(LastBatchSummary));
+        }
+
+        public void UpdateMetrics(int totalSynced, double elapsedSeconds)
+        {
+            TotalRecordsSynced = totalSynced;
+            if (elapsedSeconds > 0)
             {
-                app.Dispatcher.BeginInvoke(() =>
-                {
-                    try
-                    {
-                        Logs.Insert(0, new SyncLogViewModel { Message = message, Level = level, Module = module });
-                        if (Logs.Count > 100) Logs.RemoveAt(100);
-                    }
-                    catch { /* Ignore collection update errors during shutdown */ }
-                });
+                VouchersPerSecond = totalSynced / elapsedSeconds;
             }
-            catch { /* Ignore dispatcher errors */ }
+        }
+
+        public void IncrementSkipped(int count = 1)
+        {
+            SkippedCount += count;
         }
 
         protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
@@ -562,4 +460,3 @@ namespace Acczite20.Services.Sync
         }
     }
 }
-

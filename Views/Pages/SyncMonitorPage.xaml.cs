@@ -167,25 +167,7 @@ namespace Acczite20.Views.Pages
                 return;
             }
 
-            if (!_control.TryStart(orgId, SyncOwner.Manual))
-            {
-                var status = _control.GetState(orgId);
-                if (status.Owner == SyncOwner.HostedService)
-                {
-                    await CustomDialog.ShowAsync(
-                        "Background Sync Active",
-                        "Background sync is currently processing. Please wait for it to finish.",
-                        CustomDialog.DialogType.Warning);
-                }
-                else
-                {
-                    await CustomDialog.ShowAsync(
-                        "Sync Active",
-                        "A synchronization cycle is already running.",
-                        CustomDialog.DialogType.Warning);
-                }
-                return;
-            }
+            var runId = Guid.NewGuid();
 
             // Apply selected batch size to the monitor so the orchestrator picks it up.
             if (BatchSizeCombo.SelectedItem is ComboBoxItem batchItem &&
@@ -216,7 +198,14 @@ namespace Acczite20.Views.Pages
 
             try
             {
-                await _orchestrator.RunFullSyncAsync(orgId, null, null, _syncCts.Token);
+                var result = await _orchestrator.RunFullSyncAsync(orgId, null, null, _syncCts.Token, runId: runId);
+                
+                if (result == SyncRunResult.Ignored)
+                {
+                    await CustomDialog.ShowAsync("Sync Already Active", "A synchronization is already running for this organization.", CustomDialog.DialogType.Info);
+                    return;
+                }
+
                 await RefreshDataAsync();
             }
             catch (OperationCanceledException)
@@ -229,13 +218,11 @@ namespace Acczite20.Views.Pages
             }
             finally
             {
-                var state = _control.GetState(orgId);
-                state.Status = SyncLifecycle.Idle;
-                state.Owner = SyncOwner.None;
-
+                // Orchestrator handles state cleanup (Idle/Completed/Failed)
                 PauseResumeButton.IsEnabled = false;
                 _syncMonitor.IsPaused = false;
                 PauseResumeButton.Content = "Pause";
+                UpdateSyncStateUi();
             }
         }
 

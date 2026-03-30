@@ -220,7 +220,14 @@ namespace Acczite20.Views
                 if (session.OrganizationObjectId != selectedValue)
                 {
                     session.OrganizationObjectId = selectedValue;
-                    session.OrganizationId = Guid.Empty; // Clear SQL ID if we switched to MongoDB org
+                    // Generate deterministic GUID for local DB identity
+                    using var sha = System.Security.Cryptography.SHA256.Create();
+                    var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(selectedValue));
+                    var guidBytes = new byte[16];
+                    Array.Copy(hash, guidBytes, 16);
+                    guidBytes[6] = (byte)((guidBytes[6] & 0x0F) | 0x50);
+                    guidBytes[8] = (byte)((guidBytes[8] & 0x3F) | 0x80);
+                    session.OrganizationId = new Guid(guidBytes);
                     changed = true;
                 }
             }

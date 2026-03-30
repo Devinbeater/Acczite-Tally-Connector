@@ -82,12 +82,14 @@ namespace Acczite20.ViewModels.Wizard
         public async Task LoadCollectionsFromTallyAsync(bool skipCompanyFetch = false)
         {
             IsLoading = true;
-            var previousSelections = TallyFields
-                .Where(item => item.IsSelected && !string.IsNullOrWhiteSpace(item.Name))
-                .OrderBy(item => item.SequenceNumber)
-                .ThenBy(item => item.Name)
-                .Select((item, index) => new { item.Name, Order = index + 1 })
-                .ToDictionary(x => x.Name!, x => x.Order, StringComparer.OrdinalIgnoreCase);
+            var previousSelections = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            int order = 1;
+            foreach (var item in TallyFields
+                .Where(i => i.IsSelected && !string.IsNullOrWhiteSpace(i.Name))
+                .OrderBy(i => i.SequenceNumber).ThenBy(i => i.Name))
+            {
+                previousSelections.TryAdd(item.Name!, order++);
+            }
 
             TallyFields.Clear();
             if (!skipCompanyFetch) Companies.Clear();
@@ -148,8 +150,13 @@ namespace Acczite20.ViewModels.Wizard
 
                 StatusMessage = "Fetching collections from Tally...";
 
-                // 2. Fetch available collection names
-                var collections = await _tallyService.GetTallyCollectionsAsync();
+                // 2. Fetch available collection names.
+                // Deduplicate by normalizing whitespace so "Day Book" and "Daybook" collapse to one entry.
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var collections = (await _tallyService.GetTallyCollectionsAsync())
+                    .Select(c => System.Text.RegularExpressions.Regex.Replace(c.Trim(), @"\s+", " "))
+                    .Where(c => seen.Add(c))
+                    .ToList();
 
                 if (collections.Count == 0)
                 {

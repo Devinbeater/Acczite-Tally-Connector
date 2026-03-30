@@ -1,0 +1,61 @@
+<ui:ContentDialog x:Class="Acczite20.Views.FullLogViewerDialog"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:ui="http://schemas.modernwpf.com/2019"
+                  xmlns:conv="clr-namespace:Acczite20.Converters"
+                  Title="Technical Activity Logs"
+                  PrimaryButtonText="Close"
+                  DefaultButton="Primary">
+    
+    <ui:ContentDialog.Resources>
+        <conv:SyncLogLevelToColorConverter x:Key="LevelToBrush" />
+    </ui:ContentDialog.Resources>
+
+    <Grid Width="1000" Height="700">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Detailed diagnostic trace of the Tally synchronization pipeline." 
+                   Grid.Row="0" Margin="0,0,0,16" Foreground="#64748B" FontSize="13"/>
+
+        <Border Grid.Row="1" Background="#F8FAFC" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1">
+            <DataGrid x:Name="DialogLogGrid" 
+                      AutoGenerateColumns="False" 
+                      IsReadOnly="True" 
+                      HeadersVisibility="Column"
+                      Background="Transparent"
+                      BorderThickness="0" 
+                      GridLinesVisibility="Horizontal"
+                      HorizontalGridLinesBrush="#F1F5F9">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="TIME" Binding="{Binding Timestamp, StringFormat=HH:mm:ss}" Width="100"/>
+                    <DataGridTextColumn Header="SOURCE" Binding="{Binding Module}" Width="150"/>
+                    <DataGridTextColumn Header="LEVEL" Binding="{Binding Level}" Width="100"/>
+                    <DataGridTextColumn Header="MESSAGE" Binding="{Binding Message}" Width="*">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextWrapping" Value="Wrap"/>
+                                <Setter Property="Padding" Value="4"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                </DataGrid.Columns>
+                <DataGrid.Resources>
+                    <Style TargetType="DataGridRow">
+                        <Setter Property="Background" Value="{Binding Level, Converter={StaticResource LevelToBrush}}"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Level}" Value="ERROR">
+                                <Setter Property="Foreground" Value="White"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Level}" Value="SUCCESS">
+                                <Setter Property="Foreground" Value="White"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.Resources>
+            </DataGrid>
+        </Border>
+    </Grid>
+</ui:ContentDialog>

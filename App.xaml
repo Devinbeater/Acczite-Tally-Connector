@@ -90,9 +90,10 @@
 							<Border Background="{TemplateBinding Background}"
                                     BorderBrush="{TemplateBinding BorderBrush}"
                                     BorderThickness="{TemplateBinding BorderThickness}"
-                                    CornerRadius="6">
+                                    CornerRadius="{TemplateBinding ui:ControlHelper.CornerRadius}">
 								<ContentPresenter HorizontalAlignment="Center"
-                                                  VerticalAlignment="Center"/>
+                                                  VerticalAlignment="Center"
+                                                  Margin="{TemplateBinding Padding}"/>
 							</Border>
 						</ControlTemplate>
 					</Setter.Value>

@@ -378,7 +378,10 @@ namespace Acczite20
                 if (Guid.TryParse(sessionData.UserId, out var uid)) session.UserId = uid;
                 session.UserObjectId = sessionData.UserObjectId;
 
-                if (Guid.TryParse(sessionData.OrganizationId, out var oid)) session.OrganizationId = oid;
+                if (Guid.TryParse(sessionData.OrganizationId, out var oid))
+                    session.OrganizationId = oid;
+                else if (!string.IsNullOrWhiteSpace(sessionData.OrganizationObjectId))
+                    session.OrganizationId = ToDeterministicGuid(sessionData.OrganizationObjectId);
                 session.OrganizationObjectId = sessionData.OrganizationObjectId;
                 session.OrganizationName = sessionData.OrganizationName;
             }
@@ -429,5 +432,16 @@ namespace Acczite20
 
         [DllImport("shell32.dll", SetLastError = true)]
         private static extern int SetCurrentProcessExplicitAppUserModelID([MarshalAs(UnmanagedType.LPWStr)] string appId);
+
+        private static Guid ToDeterministicGuid(string input)
+        {
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(input));
+            var guidBytes = new byte[16];
+            Array.Copy(hash, guidBytes, 16);
+            guidBytes[6] = (byte)((guidBytes[6] & 0x0F) | 0x50);
+            guidBytes[8] = (byte)((guidBytes[8] & 0x3F) | 0x80);
+            return new Guid(guidBytes);
+        }
     }
 }

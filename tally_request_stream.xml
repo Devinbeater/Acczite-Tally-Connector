@@ -4,14 +4,14 @@
     <VERSION>1</VERSION>
     <TALLYREQUEST>Export</TALLYREQUEST>
     <TYPE>Collection</TYPE>
-    <ID>List of Units</ID>
+    <ID>AccziteVoucherHeaders</ID>
   </HEADER>
   <BODY>
     <DESC>
         
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <SVFROMDATE>20260327</SVFROMDATE><SVTODATE>20260328</SVTODATE>
+        <SVFROMDATE>20250730</SVFROMDATE><SVTODATE>20250829</SVTODATE>
         <SVCURRENTCOMPANY>Vaibhav</SVCURRENTCOMPANY>
         
         
@@ -19,13 +19,14 @@
         <TDL>
           <TDLMESSAGE>
             
-            <COLLECTION NAME="List of Units" ISMODIFY="No">
+            <COLLECTION NAME="AccziteVoucherHeaders" ISMODIFY="No">
               <TYPE>Voucher</TYPE>
               <FILTER>AccziteDateFilter</FILTER>
+              <FETCH>MASTERID</FETCH>
             </COLLECTION>
             
             <SYSTEM TYPE="Formulae" NAME="AccziteDateFilter">
-               $IsBetween:$Date:##SVFROMDATE:##SVTODATE
+               ($Date >= ##SVFROMDATE) AND ($Date <= ##SVTODATE)
             </SYSTEM>
           </TDLMESSAGE>
         </TDL>

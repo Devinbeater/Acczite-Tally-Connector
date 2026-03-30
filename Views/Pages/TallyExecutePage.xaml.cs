@@ -42,8 +42,7 @@ namespace Acczite20.Views.Pages
             Summary = BuildSummary(selectedFields);
 
             DataContext = this;
-            LiveLogList.ItemsSource = _syncMonitor.Logs;
-            SyncProgressPanel.DataContext = _syncMonitor;
+            LiveLogGrid.ItemsSource = _syncMonitor.Logs;
 
             Loaded += TallyExecutePage_Loaded;
             Unloaded += TallyExecutePage_Unloaded;
@@ -127,75 +126,46 @@ namespace Acczite20.Views.Pages
 
         private void RefreshExecutionUi()
         {
-            var hasVisibleRunState = _syncMonitor.IsSyncing
-                || _syncMonitor.TotalRecordsSynced > 0
-                || !string.Equals(_syncMonitor.CurrentStage, "Idle", StringComparison.OrdinalIgnoreCase);
+            // Failure Banner logic
+            FailureBanner.Visibility = _syncMonitor.Status == SyncStatus.Failed ? Visibility.Visible : Visibility.Collapsed;
+            FailureReasonText.Text = _syncMonitor.FailureReason;
 
-            SyncProgressPanel.Visibility = hasVisibleRunState ? Visibility.Visible : Visibility.Collapsed;
-            SyncRunRing.IsActive = _syncMonitor.IsSyncing;
-            SyncRunRing.Visibility = _syncMonitor.IsSyncing ? Visibility.Visible : Visibility.Collapsed;
+            SyncStatusLabel.Text = _syncMonitor.Status == SyncStatus.Running ? "RUNNING" : _syncMonitor.Status.ToString().ToUpper();
+            SyncStatusLabel.Foreground = _syncMonitor.Status switch
+            {
+                SyncStatus.Running => (SolidColorBrush)Application.Current.Resources["PrimaryTeal"],
+                SyncStatus.Success => Brushes.MediumSeaGreen,
+                SyncStatus.Failed => Brushes.IndianRed,
+                _ => (SolidColorBrush)Application.Current.Resources["GrayText"]
+            };
 
-            SyncStatusText.Text = _syncMonitor.CurrentStage;
-            SyncStageDetailText.Text = _syncMonitor.CurrentStageDetail;
+            CurrentStepText.Text = _syncMonitor.CurrentStage;
+            CurrentStepDetailText.Text = _syncMonitor.CurrentStageDetail;
+            
             SyncProgressBar.IsIndeterminate = _syncMonitor.IsSyncing && _syncMonitor.IsProgressIndeterminate;
             SyncProgressBar.Value = _syncMonitor.IsProgressIndeterminate ? 0 : _syncMonitor.ProgressPercent;
             SyncProgressCaptionText.Text = _syncMonitor.ProgressCaption;
-            SyncCheckpointText.Text = _syncMonitor.CheckpointStatus;
-            SyncedRecordsText.Text = _syncMonitor.TotalRecordsSynced.ToString("N0");
-            VoucherRateText.Text = $"{_syncMonitor.VouchersPerSecond:N0} /sec";
+            
+            FetchedCountText.Text = _syncMonitor.FetchedCount.ToString("N0");
+            SavedCountText.Text = _syncMonitor.SavedCount.ToString("N0");
+            SkippedCountText.Text = _syncMonitor.SkippedCount.ToString();
+            VoucherRateText.Text = $"{_syncMonitor.VouchersPerSecond} /sec";
             MemoryUsageText.Text = _syncMonitor.MemoryUsage;
-            BatchSnapshotText.Text = _syncMonitor.LastBatchSummary;
+            LastSyncTimeText.Text = _syncMonitor.LastBackgroundSync?.ToString("HH:mm:ss") ?? "Never";
 
             SyncButton.IsEnabled = !_syncMonitor.IsSyncing;
-            SyncButton.Content = _syncMonitor.IsSyncing
-                ? "Synchronization Running..."
-                : "Initialize Synchronization";
+            SyncButtonText.Text = _syncMonitor.IsSyncing ? "Sync Running..." : "Start Sync";
 
-            ApplyRunStateBadge();
-        }
-
-        private void ApplyRunStateBadge()
-        {
-            string label;
-            string backgroundHex;
-            string foregroundHex;
-
-            if (_syncMonitor.IsSyncing)
+            // Auto-scroll the log grid (Chronological: scroll to bottom)
+            if (LiveLogGrid.Items.Count > 0)
             {
-                label = "Running";
-                backgroundHex = "#DBEAFE";
-                foregroundHex = "#1D4ED8";
-            }
-            else
-            {
-                switch (_syncMonitor.CurrentStage)
+                var border = VisualTreeHelper.GetChild(LiveLogGrid, 0) as Border;
+                if (border != null)
                 {
-                    case "Sync complete":
-                        label = "Complete";
-                        backgroundHex = "#DCFCE7";
-                        foregroundHex = "#166534";
-                        break;
-                    case "Sync failed":
-                        label = "Failed";
-                        backgroundHex = "#FEE2E2";
-                        foregroundHex = "#B91C1C";
-                        break;
-                    case "Sync cancelled":
-                        label = "Cancelled";
-                        backgroundHex = "#FEF3C7";
-                        foregroundHex = "#92400E";
-                        break;
-                    default:
-                        label = "Idle";
-                        backgroundHex = "#E2E8F0";
-                        foregroundHex = "#475569";
-                        break;
+                    var scrollViewer = VisualTreeHelper.GetChild(border, 0) as ScrollViewer;
+                    scrollViewer?.ScrollToEnd(); 
                 }
             }
-
-            RunStateBadge.Background = BrushFromHex(backgroundHex);
-            RunStateBadgeText.Foreground = BrushFromHex(foregroundHex);
-            RunStateBadgeText.Text = label;
         }
 
         private static SolidColorBrush BrushFromHex(string hex)
@@ -207,7 +177,6 @@ namespace Acczite20.Views.Pages
         {
             if (_syncMonitor.IsSyncing)
             {
-                SyncProgressPanel.Visibility = Visibility.Visible;
                 RefreshExecutionUi();
 
                 await CustomDialog.ShowAsync(
@@ -229,7 +198,23 @@ namespace Acczite20.Views.Pages
                     return;
                 }
 
-                if (!_control.TryStart(orgId, SyncOwner.Manual))
+                var runId = Guid.NewGuid();
+
+                // Sync parameters binding
+                _syncMonitor.SyncMode = SyncModeCombo.SelectedIndex == 2 ? "Full" : (SyncModeCombo.SelectedIndex == 1 ? "Delta" : "Auto");
+                _syncMonitor.BatchSize = _syncMonitor.SyncMode == "SafeMode" ? 25 : 150;
+
+                DateTimeOffset? fromDate = SyncFromDatePicker.SelectedDate;
+                DateTimeOffset? toDate = SyncToDatePicker.SelectedDate;
+
+                SyncButton.IsEnabled = false;
+                _syncCts = new CancellationTokenSource();
+
+                RefreshExecutionUi();
+                var result = await _orchestrator.RunFullSyncAsync(orgId, fromDate, toDate, _syncCts.Token, _selectedTallyCollections, runId: runId);
+                RefreshExecutionUi();
+
+                if (result == SyncRunResult.Ignored)
                 {
                     var status = _control.GetState(orgId);
                     if (status.Owner == SyncOwner.HostedService)
@@ -242,51 +227,37 @@ namespace Acczite20.Views.Pages
                     else
                     {
                         await CustomDialog.ShowAsync(
-                            "Sync Active",
-                            "A synchronization cycle is already running for this organization.",
-                            CustomDialog.DialogType.Warning);
+                            "Sync Already Active",
+                            "A synchronization cycle is already running for this organization. You can monitor progress in the log view.",
+                            CustomDialog.DialogType.Info);
                     }
                     return;
                 }
 
-                // Sync parameters binding
-                _syncMonitor.SyncMode = SyncModeCombo.SelectedIndex == 1 ? "Safe" : "Auto";
-                if (_syncMonitor.SyncMode == "Safe")
-                {
-                    var item = (ComboBoxItem)BatchSizeCombo.SelectedItem;
-                    if (item != null && int.TryParse(item.Content.ToString(), out int b))
-                        _syncMonitor.BatchSize = b;
-                    else
-                        _syncMonitor.BatchSize = 25;
-                }
-                else _syncMonitor.BatchSize = 150;
-
-                DateTimeOffset? fromDate = SyncFromDatePicker.SelectedDate;
-                DateTimeOffset? toDate = SyncToDatePicker.SelectedDate;
-
-                SyncProgressPanel.Visibility = Visibility.Visible;
-                SyncButton.IsEnabled = false;
-                _syncCts = new CancellationTokenSource();
-
-                RefreshExecutionUi();
-                await _orchestrator.RunFullSyncAsync(SessionManager.Instance.OrganizationId, fromDate, toDate, _syncCts.Token, _selectedTallyCollections);
-                RefreshExecutionUi();
-                if (string.Equals(_syncMonitor.CurrentStage, "Sync failed", StringComparison.OrdinalIgnoreCase))
+                if (result == SyncRunResult.Failed || string.Equals(_syncMonitor.CurrentStage, "Sync failed", StringComparison.OrdinalIgnoreCase))
                 {
                     throw new InvalidOperationException(_syncMonitor.CurrentStageDetail ?? "Tally connection failed or sync error.");
                 }
                 
-                if (string.Equals(_syncMonitor.CurrentStage, "Sync cancelled", StringComparison.OrdinalIgnoreCase))
+                if (result == SyncRunResult.Cancelled || string.Equals(_syncMonitor.CurrentStage, "Sync cancelled", StringComparison.OrdinalIgnoreCase))
                 {
                     throw new OperationCanceledException();
                 }
 
-                var dialog = new TallySyncCompleteDialog
+                // Only show dialog if something actually happened
+                if (_syncMonitor.FetchedCount > 0 || _syncMonitor.SavedCount > 0 || _syncMonitor.TotalRecordsSynced > 0)
                 {
-                    Owner = Window.GetWindow(this)
-                };
-                dialog.SetResults(_syncMonitor.TotalRecordsSynced, _syncMonitor.VouchersPerSecond);
-                await dialog.ShowAsync();
+                    var dialog = new TallySyncCompleteDialog
+                    {
+                        Owner = Window.GetWindow(this)
+                    };
+                    dialog.SetResults(_syncMonitor.TotalRecordsSynced, _syncMonitor.VouchersPerSecond);
+                    await dialog.ShowAsync();
+                }
+                else 
+                {
+                    await CustomDialog.ShowAsync("Sync Finished", "Tally reported no new records to sync for this range.", CustomDialog.DialogType.Info);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -312,66 +283,36 @@ namespace Acczite20.Views.Pages
             }
             finally
             {
-                var state = _control.GetState(orgId);
-                state.Status = SyncLifecycle.Idle;
-                state.Owner = SyncOwner.None;
+                // Orchestrator handles state cleanup (Idle/Completed/Failed) via ISyncControlService.Complete
+                // We just need to restore UI button state here
+                _syncMonitor.LastBackgroundSync = DateTime.Now;
                 
                 SyncButton.IsEnabled = !_syncMonitor.IsSyncing;
                 _syncCts = null;
+                RefreshExecutionUi();
             }
         }
 
-        private void SyncModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private async void ExpandLogs_Click(object sender, RoutedEventArgs e)
         {
-            if (SyncModeCombo == null || BatchSizePanel == null) return;
-            BatchSizePanel.Visibility = SyncModeCombo.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
+            var dialog = new FullLogViewerDialog(_syncMonitor.Logs)
+            {
+                Owner = System.Windows.Window.GetWindow(this)
+            };
+            await dialog.ShowAsync();
         }
 
-        private async void PauseButton_Click(object sender, RoutedEventArgs e)
+        private void ContinuousToggle_Toggled(object sender, RoutedEventArgs e)
         {
-            var orgId = SessionManager.Instance.OrganizationId;
-            var state = _control.GetState(orgId);
+            if (ContinuousToggle == null) return;
             
-            if (state.IsPaused)
-            {
-                _control.Resume(orgId);
-                PauseButton.Content = "Pause";
-            }
-            else
-            {
-                await _control.PauseAsync(orgId);
-                PauseButton.Content = "Resume";
-            }
-        }
+            var orgId = SessionManager.Instance.OrganizationId;
+            if (orgId == Guid.Empty) return;
 
-        private void ForceCooldown_Click(object sender, RoutedEventArgs e)
-        {
-            if (_syncMonitor == null) return;
-            _syncMonitor.TriggerCooldown = true;
-        }
-
-        private async void ContinuousSyncToggle_Toggled(object sender, RoutedEventArgs e)
-        {
-            if (ContinuousSyncToggle.IsOn)
-            {
-                if (SessionManager.Instance.OrganizationId == Guid.Empty && string.IsNullOrWhiteSpace(SessionManager.Instance.OrganizationObjectId))
-                {
-                    ContinuousSyncToggle.IsOn = false;
-                    await CustomDialog.ShowAsync("Organization Required", "Please select an organization first.", CustomDialog.DialogType.Warning);
-                    return;
-                }
-                
-                var orgId = SessionManager.Instance.OrganizationId;
-                // If it's a MongoDB org, we still pass Guid.Empty for now, but the UI won't block it if ObjectId is present.
-                // NOTE: Orchestrator might need update to handle string IDs if SQL sync is required for Mongo orgs.
-                _orchestrator.StartContinuousSync(orgId, _selectedTallyCollections);
-                _syncMonitor.AddLog("Continuous background sync enabled.", "INFO", "SYSTEM");
-            }
-            else
-            {
-                _orchestrator.StopContinuousSync();
-                _syncMonitor.AddLog("Continuous background sync disabled.", "INFO", "SYSTEM");
-            }
+            var state = _control.GetState(orgId);
+            state.IsContinuous = ContinuousToggle.IsOn;
+            
+            _syncMonitor.AddLog($"Continuous Sync switched to {(state.IsContinuous ? "ENABLED" : "DISABLED")}", "INFO", "CONFIG");
         }
     }
 }

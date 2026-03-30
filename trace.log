@@ -2067,3 +2067,419 @@
 [20:21:32.294] TRACE: Loading organizations
 [20:21:32.328] TRACE: Navigating to DashboardPage
 [20:21:34.665] TRACE: MainWindow_Loaded finished
+[10:52:18.375] TRACE: App constructor started
+[10:52:23.617] TRACE: Registering event subscribers
+[10:52:23.618] TRACE: App constructor finished
+[10:52:23.622] TRACE: OnStartup started
+[10:52:23.625] TRACE: Showing StartupWindow
+[10:52:25.590] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[10:52:55.636] TRACE: App: No LOCAL Mongo found
+[10:52:55.730] TRACE: StartupWindow result: True
+[10:52:55.730] TRACE: Restoring session
+[10:52:55.731] TRACE: Resolving MainWindow
+[10:52:55.733] TRACE: MainWindow constructor started
+[10:52:55.757] TRACE: MainWindow constructor finished
+[10:52:55.759] TRACE: Showing MainWindow
+[10:52:55.899] TRACE: MainWindow_Loaded started
+[10:52:55.899] TRACE: Applying permissions for role: admin
+[10:52:55.901] TRACE: Loading organizations
+[10:52:55.914] TRACE: Navigating to DashboardPage
+[10:52:58.066] TRACE: MainWindow_Loaded finished
+[11:19:03.934] TRACE: App constructor started
+[11:19:07.146] TRACE: Registering event subscribers
+[11:19:07.148] TRACE: App constructor finished
+[11:19:07.153] TRACE: OnStartup started
+[11:19:07.157] TRACE: Showing StartupWindow
+[11:19:09.282] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[11:19:39.309] TRACE: App: No LOCAL Mongo found
+[11:19:39.456] TRACE: StartupWindow result: True
+[11:19:39.457] TRACE: Restoring session
+[11:19:39.458] TRACE: Resolving MainWindow
+[11:19:39.460] TRACE: MainWindow constructor started
+[11:19:39.489] TRACE: MainWindow constructor finished
+[11:19:39.492] TRACE: Showing MainWindow
+[11:19:39.682] TRACE: MainWindow_Loaded started
+[11:19:39.684] TRACE: Applying permissions for role: admin
+[11:19:39.690] TRACE: Loading organizations
+[11:19:39.712] TRACE: Navigating to DashboardPage
+[11:19:41.433] TRACE: MainWindow_Loaded finished
+[11:22:07.618] TRACE: App constructor started
+[11:22:10.059] TRACE: Registering event subscribers
+[11:22:10.060] TRACE: App constructor finished
+[11:22:10.064] TRACE: OnStartup started
+[11:22:10.067] TRACE: Showing StartupWindow
+[11:22:12.883] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[11:22:42.890] TRACE: App: No LOCAL Mongo found
+[11:22:42.938] TRACE: StartupWindow result: True
+[11:22:42.939] TRACE: Restoring session
+[11:22:42.939] TRACE: Resolving MainWindow
+[11:22:42.940] TRACE: MainWindow constructor started
+[11:22:42.960] TRACE: MainWindow constructor finished
+[11:22:42.962] TRACE: Showing MainWindow
+[11:22:43.048] TRACE: MainWindow_Loaded started
+[11:22:43.049] TRACE: Applying permissions for role: admin
+[11:22:43.051] TRACE: Loading organizations
+[11:22:43.059] TRACE: Navigating to DashboardPage
+[11:22:44.400] TRACE: MainWindow_Loaded finished
+[11:25:19.582] TRACE: App constructor started
+[11:25:22.024] TRACE: Registering event subscribers
+[11:25:22.025] TRACE: App constructor finished
+[11:25:22.029] TRACE: OnStartup started
+[11:25:22.031] TRACE: Showing StartupWindow
+[11:25:23.438] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[11:25:53.453] TRACE: App: No LOCAL Mongo found
+[11:25:53.502] TRACE: StartupWindow result: True
+[11:25:53.502] TRACE: Restoring session
+[11:25:53.503] TRACE: Resolving MainWindow
+[11:25:53.505] TRACE: MainWindow constructor started
+[11:25:53.523] TRACE: MainWindow constructor finished
+[11:25:53.525] TRACE: Showing MainWindow
+[11:25:53.609] TRACE: MainWindow_Loaded started
+[11:25:53.610] TRACE: Applying permissions for role: admin
+[11:25:53.612] TRACE: Loading organizations
+[11:25:53.620] TRACE: Navigating to DashboardPage
+[11:25:54.869] TRACE: MainWindow_Loaded finished
+[11:28:56.554] TRACE: App constructor started
+[11:28:58.998] TRACE: Registering event subscribers
+[11:28:58.999] TRACE: App constructor finished
+[11:28:59.002] TRACE: OnStartup started
+[11:28:59.005] TRACE: Showing StartupWindow
+[11:29:01.452] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[11:29:31.461] TRACE: App: No LOCAL Mongo found
+[11:29:31.511] TRACE: StartupWindow result: True
+[11:29:31.512] TRACE: Restoring session
+[11:29:31.513] TRACE: Resolving MainWindow
+[11:29:31.515] TRACE: MainWindow constructor started
+[11:29:31.534] TRACE: MainWindow constructor finished
+[11:29:31.535] TRACE: Showing MainWindow
+[11:29:31.621] TRACE: MainWindow_Loaded started
+[11:29:31.622] TRACE: Applying permissions for role: admin
+[11:29:31.624] TRACE: Loading organizations
+[11:29:31.633] TRACE: Navigating to DashboardPage
+[11:29:32.934] TRACE: MainWindow_Loaded finished
+[11:38:51.999] TRACE: App constructor started
+[11:38:54.419] TRACE: Registering event subscribers
+[11:38:54.421] TRACE: App constructor finished
+[11:38:54.424] TRACE: OnStartup started
+[11:38:54.427] TRACE: Showing StartupWindow
+[11:38:56.813] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[11:39:26.825] TRACE: App: No LOCAL Mongo found
+[11:39:26.873] TRACE: StartupWindow result: True
+[11:39:26.873] TRACE: Restoring session
+[11:39:26.874] TRACE: Resolving MainWindow
+[11:39:26.875] TRACE: MainWindow constructor started
+[11:39:26.893] TRACE: MainWindow constructor finished
+[11:39:26.895] TRACE: Showing MainWindow
+[11:39:26.978] TRACE: MainWindow_Loaded started
+[11:39:26.979] TRACE: Applying permissions for role: admin
+[11:39:26.981] TRACE: Loading organizations
+[11:39:26.988] TRACE: Navigating to DashboardPage
+[11:39:28.327] TRACE: MainWindow_Loaded finished
+[11:57:02.963] TRACE: App constructor started
+[11:57:05.352] TRACE: Registering event subscribers
+[11:57:05.353] TRACE: App constructor finished
+[11:57:05.357] TRACE: OnStartup started
+[11:57:05.359] TRACE: Showing StartupWindow
+[11:57:06.976] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[11:57:36.987] TRACE: App: No LOCAL Mongo found
+[11:57:37.036] TRACE: StartupWindow result: True
+[11:57:37.037] TRACE: Restoring session
+[11:57:37.037] TRACE: Resolving MainWindow
+[11:57:37.038] TRACE: MainWindow constructor started
+[11:57:37.058] TRACE: MainWindow constructor finished
+[11:57:37.060] TRACE: Showing MainWindow
+[11:57:37.149] TRACE: MainWindow_Loaded started
+[11:57:37.150] TRACE: Applying permissions for role: admin
+[11:57:37.151] TRACE: Loading organizations
+[11:57:37.159] TRACE: Navigating to DashboardPage
+[11:57:38.455] TRACE: MainWindow_Loaded finished
+[12:14:56.318] TRACE: App constructor started
+[12:14:58.746] TRACE: Registering event subscribers
+[12:14:58.747] TRACE: App constructor finished
+[12:14:58.752] TRACE: OnStartup started
+[12:14:58.755] TRACE: Showing StartupWindow
+[12:14:59.909] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[12:15:29.917] TRACE: App: No LOCAL Mongo found
+[12:15:29.971] TRACE: StartupWindow result: True
+[12:15:29.972] TRACE: Restoring session
+[12:15:29.973] TRACE: Resolving MainWindow
+[12:15:29.974] TRACE: MainWindow constructor started
+[12:15:29.996] TRACE: MainWindow constructor finished
+[12:15:29.998] TRACE: Showing MainWindow
+[12:15:30.082] TRACE: MainWindow_Loaded started
+[12:15:30.084] TRACE: Applying permissions for role: admin
+[12:15:30.086] TRACE: Loading organizations
+[12:15:30.094] TRACE: Navigating to DashboardPage
+[12:15:31.375] TRACE: MainWindow_Loaded finished
+[12:20:08.168] TRACE: App constructor started
+[12:20:11.751] TRACE: Registering event subscribers
+[12:20:11.753] TRACE: App constructor finished
+[12:20:11.762] TRACE: OnStartup started
+[12:20:11.766] TRACE: Showing StartupWindow
+[12:20:13.382] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[12:20:43.407] TRACE: App: No LOCAL Mongo found
+[12:20:43.493] TRACE: StartupWindow result: True
+[12:20:43.494] TRACE: Restoring session
+[12:20:43.496] TRACE: Resolving MainWindow
+[12:20:43.498] TRACE: MainWindow constructor started
+[12:20:43.522] TRACE: MainWindow constructor finished
+[12:20:43.524] TRACE: Showing MainWindow
+[12:20:43.636] TRACE: MainWindow_Loaded started
+[12:20:43.637] TRACE: Applying permissions for role: admin
+[12:20:43.640] TRACE: Loading organizations
+[12:20:43.651] TRACE: Navigating to DashboardPage
+[12:20:45.403] TRACE: MainWindow_Loaded finished
+[12:31:20.478] TRACE: App constructor started
+[12:31:24.219] TRACE: Registering event subscribers
+[12:31:24.221] TRACE: App constructor finished
+[12:31:24.228] TRACE: OnStartup started
+[12:31:24.231] TRACE: Showing StartupWindow
+[12:31:25.806] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[12:31:55.838] TRACE: App: No LOCAL Mongo found
+[12:31:55.992] TRACE: StartupWindow result: True
+[12:31:55.993] TRACE: Restoring session
+[12:31:55.994] TRACE: Resolving MainWindow
+[12:31:55.995] TRACE: MainWindow constructor started
+[12:31:56.017] TRACE: MainWindow constructor finished
+[12:31:56.020] TRACE: Showing MainWindow
+[12:31:56.190] TRACE: MainWindow_Loaded started
+[12:31:56.194] TRACE: Applying permissions for role: admin
+[12:31:56.203] TRACE: Loading organizations
+[12:31:56.234] TRACE: Navigating to DashboardPage
+[12:31:58.874] TRACE: MainWindow_Loaded finished
+[12:48:43.636] TRACE: App constructor started
+[12:48:47.165] TRACE: Registering event subscribers
+[12:48:47.167] TRACE: App constructor finished
+[12:48:47.173] TRACE: OnStartup started
+[12:48:47.176] TRACE: Showing StartupWindow
+[12:48:50.220] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[12:49:20.237] TRACE: App: No LOCAL Mongo found
+[12:49:20.318] TRACE: StartupWindow result: True
+[12:49:20.318] TRACE: Restoring session
+[12:49:20.320] TRACE: Resolving MainWindow
+[12:49:20.322] TRACE: MainWindow constructor started
+[12:49:20.354] TRACE: MainWindow constructor finished
+[12:49:20.356] TRACE: Showing MainWindow
+[12:49:20.490] TRACE: MainWindow_Loaded started
+[12:49:20.491] TRACE: Applying permissions for role: admin
+[12:49:20.493] TRACE: Loading organizations
+[12:49:20.503] TRACE: Navigating to DashboardPage
+[12:49:22.471] TRACE: MainWindow_Loaded finished
+[12:54:33.413] TRACE: CRASH LOGGED: DispatcherUnhandledException
+[13:01:39.241] TRACE: App constructor started
+[13:01:39.503] TRACE: Registering event subscribers
+[13:01:39.505] TRACE: App constructor finished
+[13:01:39.509] TRACE: OnStartup started
+[13:01:39.512] TRACE: Showing StartupWindow
+[13:01:41.686] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[13:02:11.704] TRACE: App: No LOCAL Mongo found
+[13:02:11.784] TRACE: StartupWindow result: True
+[13:02:11.785] TRACE: Restoring session
+[13:02:11.786] TRACE: Resolving MainWindow
+[13:02:11.788] TRACE: MainWindow constructor started
+[13:02:11.819] TRACE: MainWindow constructor finished
+[13:02:11.823] TRACE: Showing MainWindow
+[13:02:11.942] TRACE: MainWindow_Loaded started
+[13:02:11.944] TRACE: Applying permissions for role: admin
+[13:02:11.946] TRACE: Loading organizations
+[13:02:11.959] TRACE: Navigating to DashboardPage
+[13:02:12.144] TRACE: MainWindow_Loaded finished
+[14:15:55.842] TRACE: CRASH LOGGED: DispatcherUnhandledException
+[14:33:24.562] TRACE: App constructor started
+[14:33:28.143] TRACE: Registering event subscribers
+[14:33:28.145] TRACE: App constructor finished
+[14:33:28.150] TRACE: OnStartup started
+[14:33:28.153] TRACE: Showing StartupWindow
+[14:33:30.103] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[14:34:00.131] TRACE: App: No LOCAL Mongo found
+[14:34:00.235] TRACE: StartupWindow result: True
+[14:34:00.235] TRACE: Restoring session
+[14:34:00.236] TRACE: Resolving MainWindow
+[14:34:00.238] TRACE: MainWindow constructor started
+[14:34:00.258] TRACE: MainWindow constructor finished
+[14:34:00.261] TRACE: Showing MainWindow
+[14:34:00.368] TRACE: MainWindow_Loaded started
+[14:34:00.372] TRACE: Applying permissions for role: admin
+[14:34:00.381] TRACE: Loading organizations
+[14:34:00.401] TRACE: Navigating to DashboardPage
+[14:34:03.000] TRACE: MainWindow_Loaded finished
+[14:38:49.255] TRACE: App constructor started
+[14:38:52.783] TRACE: Registering event subscribers
+[14:38:52.785] TRACE: App constructor finished
+[14:38:52.790] TRACE: OnStartup started
+[14:38:52.793] TRACE: Showing StartupWindow
+[14:38:54.686] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[14:39:24.711] TRACE: App: No LOCAL Mongo found
+[14:39:24.813] TRACE: StartupWindow result: True
+[14:39:24.814] TRACE: Restoring session
+[14:39:24.815] TRACE: Resolving MainWindow
+[14:39:24.816] TRACE: MainWindow constructor started
+[14:39:24.839] TRACE: MainWindow constructor finished
+[14:39:24.842] TRACE: Showing MainWindow
+[14:39:24.965] TRACE: MainWindow_Loaded started
+[14:39:24.966] TRACE: Applying permissions for role: admin
+[14:39:24.970] TRACE: Loading organizations
+[14:39:24.981] TRACE: Navigating to DashboardPage
+[14:39:26.786] TRACE: MainWindow_Loaded finished
+[14:46:26.789] TRACE: App constructor started
+[14:46:30.115] TRACE: Registering event subscribers
+[14:46:30.117] TRACE: App constructor finished
+[14:46:30.123] TRACE: OnStartup started
+[14:46:30.126] TRACE: Showing StartupWindow
+[14:46:31.474] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[14:47:01.507] TRACE: App: No LOCAL Mongo found
+[14:47:01.589] TRACE: StartupWindow result: True
+[14:47:01.590] TRACE: Restoring session
+[14:47:01.591] TRACE: Resolving MainWindow
+[14:47:01.595] TRACE: MainWindow constructor started
+[14:47:01.626] TRACE: MainWindow constructor finished
+[14:47:01.628] TRACE: Showing MainWindow
+[14:47:01.750] TRACE: MainWindow_Loaded started
+[14:47:01.754] TRACE: Applying permissions for role: admin
+[14:47:01.759] TRACE: Loading organizations
+[14:47:01.769] TRACE: Navigating to DashboardPage
+[14:47:03.903] TRACE: MainWindow_Loaded finished
+[16:35:03.459] TRACE: App constructor started
+[16:35:06.304] TRACE: Registering event subscribers
+[16:35:06.306] TRACE: App constructor finished
+[16:35:06.312] TRACE: OnStartup started
+[16:35:06.316] TRACE: Showing StartupWindow
+[16:35:08.554] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[16:35:38.592] TRACE: App: No LOCAL Mongo found
+[16:35:38.772] TRACE: StartupWindow result: True
+[16:35:38.773] TRACE: Restoring session
+[16:35:38.774] TRACE: Resolving MainWindow
+[16:35:38.775] TRACE: MainWindow constructor started
+[16:35:38.811] TRACE: MainWindow constructor finished
+[16:35:38.814] TRACE: Showing MainWindow
+[16:35:39.075] TRACE: MainWindow_Loaded started
+[16:35:39.077] TRACE: Applying permissions for role: admin
+[16:35:39.080] TRACE: Loading organizations
+[16:35:39.101] TRACE: Navigating to DashboardPage
+[16:35:41.071] TRACE: MainWindow_Loaded finished
+[16:47:30.182] TRACE: App constructor started
+[16:47:33.170] TRACE: Registering event subscribers
+[16:47:33.172] TRACE: App constructor finished
+[16:47:33.178] TRACE: OnStartup started
+[16:47:33.208] TRACE: Showing StartupWindow
+[16:47:35.968] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[16:48:05.977] TRACE: App: No LOCAL Mongo found
+[16:48:06.117] TRACE: StartupWindow result: True
+[16:48:06.118] TRACE: Restoring session
+[16:48:06.118] TRACE: Resolving MainWindow
+[16:48:06.120] TRACE: MainWindow constructor started
+[16:48:06.150] TRACE: MainWindow constructor finished
+[16:48:06.155] TRACE: Showing MainWindow
+[16:48:06.344] TRACE: MainWindow_Loaded started
+[16:48:06.346] TRACE: Applying permissions for role: admin
+[16:48:06.351] TRACE: Loading organizations
+[16:48:06.364] TRACE: Navigating to DashboardPage
+[16:48:08.294] TRACE: MainWindow_Loaded finished
+[17:07:36.314] TRACE: App constructor started
+[17:07:36.663] TRACE: Registering event subscribers
+[17:07:36.664] TRACE: App constructor finished
+[17:07:36.672] TRACE: OnStartup started
+[17:07:36.675] TRACE: Showing StartupWindow
+[17:07:38.605] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[17:08:08.624] TRACE: App: No LOCAL Mongo found
+[17:08:08.796] TRACE: StartupWindow result: True
+[17:08:08.797] TRACE: Restoring session
+[17:08:08.799] TRACE: Resolving MainWindow
+[17:08:08.801] TRACE: MainWindow constructor started
+[17:08:08.847] TRACE: MainWindow constructor finished
+[17:08:08.850] TRACE: Showing MainWindow
+[17:08:09.043] TRACE: MainWindow_Loaded started
+[17:08:09.045] TRACE: Applying permissions for role: admin
+[17:08:09.048] TRACE: Loading organizations
+[17:08:09.063] TRACE: Navigating to DashboardPage
+[17:08:09.328] TRACE: MainWindow_Loaded finished
+[17:34:28.947] TRACE: App constructor started
+[17:34:32.510] TRACE: Registering event subscribers
+[17:34:32.512] TRACE: App constructor finished
+[17:34:32.522] TRACE: OnStartup started
+[17:34:32.526] TRACE: Showing StartupWindow
+[17:34:35.612] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[17:35:05.638] TRACE: App: No LOCAL Mongo found
+[17:35:05.767] TRACE: StartupWindow result: True
+[17:35:05.768] TRACE: Restoring session
+[17:35:05.769] TRACE: Resolving MainWindow
+[17:35:05.771] TRACE: MainWindow constructor started
+[17:35:05.808] TRACE: MainWindow constructor finished
+[17:35:05.812] TRACE: Showing MainWindow
+[17:35:06.018] TRACE: MainWindow_Loaded started
+[17:35:06.021] TRACE: Applying permissions for role: admin
+[17:35:06.027] TRACE: Loading organizations
+[17:35:06.045] TRACE: Navigating to DashboardPage
+[17:35:08.056] TRACE: MainWindow_Loaded finished
+[17:44:18.002] TRACE: App constructor started
+[17:44:18.286] TRACE: Registering event subscribers
+[17:44:18.287] TRACE: App constructor finished
+[17:44:18.293] TRACE: OnStartup started
+[17:44:18.296] TRACE: Showing StartupWindow
+[17:44:19.562] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[17:44:49.585] TRACE: App: No LOCAL Mongo found
+[17:44:49.661] TRACE: StartupWindow result: True
+[17:44:49.662] TRACE: Restoring session
+[17:44:49.663] TRACE: Resolving MainWindow
+[17:44:49.665] TRACE: MainWindow constructor started
+[17:44:49.684] TRACE: MainWindow constructor finished
+[17:44:49.686] TRACE: Showing MainWindow
+[17:44:49.807] TRACE: MainWindow_Loaded started
+[17:44:49.808] TRACE: Applying permissions for role: admin
+[17:44:49.811] TRACE: Loading organizations
+[17:44:49.820] TRACE: Navigating to DashboardPage
+[17:44:49.989] TRACE: MainWindow_Loaded finished
+[18:00:10.476] TRACE: App constructor started
+[18:00:14.257] TRACE: Registering event subscribers
+[18:00:14.259] TRACE: App constructor finished
+[18:00:14.265] TRACE: OnStartup started
+[18:00:14.268] TRACE: Showing StartupWindow
+[18:00:16.097] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[18:00:46.110] TRACE: App: No LOCAL Mongo found
+[18:00:46.219] TRACE: StartupWindow result: True
+[18:00:46.219] TRACE: Restoring session
+[18:00:46.220] TRACE: Resolving MainWindow
+[18:00:46.223] TRACE: MainWindow constructor started
+[18:00:46.244] TRACE: MainWindow constructor finished
+[18:00:46.247] TRACE: Showing MainWindow
+[18:00:46.463] TRACE: MainWindow_Loaded started
+[18:00:46.464] TRACE: Applying permissions for role: admin
+[18:00:46.467] TRACE: Loading organizations
+[18:00:46.481] TRACE: Navigating to DashboardPage
+[18:00:48.854] TRACE: MainWindow_Loaded finished
+[18:13:43.814] TRACE: App constructor started
+[18:13:47.631] TRACE: Registering event subscribers
+[18:13:47.632] TRACE: App constructor finished
+[18:13:47.641] TRACE: OnStartup started
+[18:13:47.645] TRACE: Showing StartupWindow
+[18:13:49.705] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[18:14:19.735] TRACE: App: No LOCAL Mongo found
+[18:14:19.833] TRACE: StartupWindow result: True
+[18:14:19.834] TRACE: Restoring session
+[18:14:19.835] TRACE: Resolving MainWindow
+[18:14:19.837] TRACE: MainWindow constructor started
+[18:14:19.865] TRACE: MainWindow constructor finished
+[18:14:19.868] TRACE: Showing MainWindow
+[18:14:20.017] TRACE: MainWindow_Loaded started
+[18:14:20.021] TRACE: Applying permissions for role: admin
+[18:14:20.025] TRACE: Loading organizations
+[18:14:20.040] TRACE: Navigating to DashboardPage
+[18:14:22.157] TRACE: MainWindow_Loaded finished
+[18:18:18.131] TRACE: App constructor started
+[18:18:18.477] TRACE: Registering event subscribers
+[18:18:18.479] TRACE: App constructor finished
+[18:18:18.494] TRACE: OnStartup started
+[18:18:18.497] TRACE: Showing StartupWindow
+[18:18:20.315] TRACE: App: Connected to REMOTE Mongo (72.62...). Available DBs: acczitenew1, admin, config, local, test
+[18:18:50.324] TRACE: App: No LOCAL Mongo found
+[18:18:50.487] TRACE: StartupWindow result: True
+[18:18:50.488] TRACE: Restoring session
+[18:18:50.489] TRACE: Resolving MainWindow
+[18:18:50.492] TRACE: MainWindow constructor started
+[18:18:50.520] TRACE: MainWindow constructor finished
+[18:18:50.523] TRACE: Showing MainWindow
+[18:18:50.704] TRACE: MainWindow_Loaded started
+[18:18:50.706] TRACE: Applying permissions for role: admin
+[18:18:50.709] TRACE: Loading organizations
+[18:18:50.722] TRACE: Navigating to DashboardPage
+[18:18:50.968] TRACE: MainWindow_Loaded finished

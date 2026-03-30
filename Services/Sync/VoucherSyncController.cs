@@ -73,6 +73,12 @@ namespace Acczite20.Services.Sync
         // Auto:       no extra delay (scheduler controls pace)
         // Safe:       user-configured InterBatchDelayMs (floor 500 ms)
         // Aggressive: 500 ms only — minimal gap between chunks
+        private void Guard(Guid orgId, Guid runId, CancellationToken ct)
+        {
+            _syncControl.EnsureOwnership(orgId, runId);
+            ct.ThrowIfCancellationRequested();
+        }
+
         private int GetInterBatchDelayMs() => _syncMonitor.SyncMode switch
         {
             "Safe"       => Math.Max(500, _syncMonitor.InterBatchDelayMs),
@@ -82,6 +88,7 @@ namespace Acczite20.Services.Sync
 
         public async Task RunAsync(
             Guid orgId,
+            Guid runId,
             Guid companyId,
             DateTimeOffset from,
             DateTimeOffset to,
@@ -97,7 +104,7 @@ namespace Acczite20.Services.Sync
 
             while (current <= to)
             {
-                ct.ThrowIfCancellationRequested();
+                Guard(orgId, runId, ct);
 
                 // ── Pause gate ──────────────────────────────────────────────────
                 var syncCtx = _syncControl.GetState(orgId);
@@ -112,6 +119,7 @@ namespace Acczite20.Services.Sync
                 await syncCtx.PauseGate.WaitAsync(ct);
                 syncCtx.PauseGate.Release();
 
+                _syncControl.UpdateHeartbeat(orgId, runId, "Streaming Vouchers");
                 syncCtx.CurrentPhase = "Voucher Sync";
 
                 // ── Preventive Memory Backoff ───────────────────────────────────
@@ -148,12 +156,12 @@ namespace Acczite20.Services.Sync
                     SingleWriter = true
                 });
 
-                var writerTask = _dbWriter.RunAsync(channel.Reader, ct);
+                var writerTask = _dbWriter.RunAsync(orgId, runId, channel.Reader, ct);
                 bool overloaded = false;
 
                 try
                 {
-                    await foreach (var voucher in _executor.ExportVouchersStreamAsync(orgId, companyId, chunk, metrics, ct))
+                    await foreach (var voucher in _executor.ExportVouchersStreamAsync(orgId, runId, companyId, chunk, metrics, ct))
                     {
                         var prepared = await prepareVoucherAsync(voucher, ct);
                         if (prepared == null)
@@ -255,6 +263,7 @@ namespace Acczite20.Services.Sync
                 if (overloaded)
                 {
                     // Retry same start with smaller window — do NOT advance cursor.
+                    Guard(orgId, runId, ct); // 🛡️ Lease-Aware Retry check
                     _syncMonitor.AddLog($"Retrying Date Range: {chunk.Start:yyyy-MM-dd HH:mm} to {chunkEnd:yyyy-MM-dd HH:mm}", "INFO", "SCHEDULER");
                     await Task.Yield();
                     continue;

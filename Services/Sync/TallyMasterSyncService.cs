@@ -86,6 +86,11 @@ namespace Acczite20.Services.Sync
                 {
                     _syncMonitor.TotalRecordsSynced += count;
                     _syncMonitor.UpdateMetrics(_syncMonitor.TotalRecordsSynced, sw.Elapsed.TotalSeconds);
+                    _log.LogInformation("Phase Complete: {Phase}. Synced {Count} records.", name, count);
+                }
+                else
+                {
+                    _log.LogInformation("Phase Complete: {Phase}. No new data or records found.", name);
                 }
 
                 _log.LogInformation("Phase Complete: {Phase}", name);
@@ -232,7 +237,7 @@ namespace Acczite20.Services.Sync
             var validGroups = await _repo.GetStockGroupNamesAsync(orgId);
             var validEntities = normalized
                 .Where(x => string.IsNullOrEmpty(x.Group) || validGroups.Contains(x.Group))
-                .Select(x => new StockItem { Name = x.Name, StockGroup = x.Group, TallyMasterId = x.TallyMasterId })
+                .Select(x => new StockItem { Name = x.Name, StockGroup = x.Group ?? string.Empty, TallyMasterId = x.TallyMasterId ?? string.Empty })
                 .ToList();
 
             await _repo.UpsertStockItemsAsync(orgId, validEntities, ct);

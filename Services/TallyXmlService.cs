@@ -472,7 +472,7 @@ namespace Acczite20.Services
                 "List of Ledgers", "List of Groups", "List of Voucher Types", "List of Stock Items",
                 "List of Stock Groups", "List of Cost Centres", "List of Cost Categories", "List of Currencies",
                 "List of Budgets", "List of Units", "List of Godowns", "List of Payroll Categories",
-                "List of Payroll Cost Centres", "List of Attendance Types", "List of Employees", "Voucher", "Day Book", "Daybook",
+                "List of Payroll Cost Centres", "List of Attendance Types", "List of Employees", "Voucher", "Day Book",
                 "Banking", "Balance Sheet", "Profit & Loss", "Stock Summary"
             };
 
@@ -711,7 +711,7 @@ namespace Acczite20.Services
             {customTdl ?? collectionTdl}
             {idFilterTdl}
             <SYSTEM TYPE=""Formulae"" NAME=""AccziteDateFilter"">
-               $IsBetween:$Date:##SVFROMDATE:##SVTODATE
+               ($Date >= ##SVFROMDATE) AND ($Date <= ##SVTODATE)
             </SYSTEM>
           </TDLMESSAGE>
         </TDL>
@@ -925,11 +925,61 @@ namespace Acczite20.Services
               <FETCH>MASTERID, NAME, PARENT, CATEGORY, BASEUNITS, OPENINGBALANCE, CLOSINGBALANCE, CLOSINGRATE, CLOSINGVALUE</FETCH>
             </COLLECTION>",
 
-            // Fallback: request the named collection without a FETCH restriction
+            "List of Groups" => @"
+            <COLLECTION NAME=""List of Groups"" ISMODIFY=""No"">
+              <TYPE>Group</TYPE>
+              <FETCH>MASTERID, GUID, NAME, PARENT, ALTERID</FETCH>
+            </COLLECTION>",
+
+            "List of Voucher Types" => @"
+            <COLLECTION NAME=""List of Voucher Types"" ISMODIFY=""No"">
+              <TYPE>VoucherType</TYPE>
+              <FETCH>MASTERID, GUID, NAME, PARENT, ALTERID</FETCH>
+            </COLLECTION>",
+
+            "List of Units" => @"
+            <COLLECTION NAME=""List of Units"" ISMODIFY=""No"">
+              <TYPE>Unit</TYPE>
+              <FETCH>MASTERID, NAME, ALTERID</FETCH>
+            </COLLECTION>",
+
+            "List of Godowns" => @"
+            <COLLECTION NAME=""List of Godowns"" ISMODIFY=""No"">
+              <TYPE>Godown</TYPE>
+              <FETCH>MASTERID, GUID, NAME, PARENT, ALTERID</FETCH>
+            </COLLECTION>",
+
+            "List of Stock Groups" => @"
+            <COLLECTION NAME=""List of Stock Groups"" ISMODIFY=""No"">
+              <TYPE>StockGroup</TYPE>
+              <FETCH>MASTERID, GUID, NAME, PARENT, ALTERID</FETCH>
+            </COLLECTION>",
+
+            "List of Stock Items" => @"
+            <COLLECTION NAME=""List of Stock Items"" ISMODIFY=""No"">
+              <TYPE>StockItem</TYPE>
+              <FETCH>MASTERID, GUID, NAME, PARENT, ALTERID</FETCH>
+            </COLLECTION>",
+
+            "List of Cost Categories" => @"
+            <COLLECTION NAME=""List of Cost Categories"" ISMODIFY=""No"">
+              <TYPE>CostCategory</TYPE>
+              <FETCH>MASTERID, NAME, ALTERID</FETCH>
+            </COLLECTION>",
+
+            "List of Cost Centres" => @"
+            <COLLECTION NAME=""List of Cost Centres"" ISMODIFY=""No"">
+              <TYPE>CostCentre</TYPE>
+              <FETCH>MASTERID, GUID, NAME, PARENT, ALTERID</FETCH>
+            </COLLECTION>",
+
+            // Fallback: request the named collection without a FETCH restriction.
+            // NOTE: does NOT default to Voucher type — that was the bug causing VoucherType
+            // requests to fetch all vouchers and hang for 120s.
             _ => $@"
             <COLLECTION NAME=""{collectionName}"" ISMODIFY=""No"">
-              <TYPE>Voucher</TYPE>
-              <FILTER>AccziteDateFilter</FILTER>
+              <TYPE>{collectionName}</TYPE>
+              <FETCH>MASTERID, GUID, NAME, PARENT, ALTERID</FETCH>
             </COLLECTION>"
         };
 
@@ -1442,7 +1492,7 @@ namespace Acczite20.Services
 
         public async Task<List<TallyMasterDto>> GetGroupsAsync() => await GetMasterCollectionAsync("List of Groups", "GROUP");
         public async Task<List<TallyMasterDto>> GetLedgersAsync() => await GetMasterCollectionAsync("AccziteLedgerHeaders", "LEDGER");
-        public async Task<List<TallyMasterDto>> GetVoucherTypesAsync() => await GetMasterCollectionAsync("VoucherType", "VOUCHERTYPE");
+        public async Task<List<TallyMasterDto>> GetVoucherTypesAsync() => await GetMasterCollectionAsync("List of Voucher Types", "VOUCHERTYPE");
         public async Task<List<TallyMasterDto>> GetUnitsAsync() => await GetMasterCollectionAsync("List of Units", "UNIT");
         public async Task<List<TallyMasterDto>> GetGodownsAsync() => await GetMasterCollectionAsync("List of Godowns", "GODOWN");
         public async Task<List<TallyMasterDto>> GetStockGroupsAsync() => await GetMasterCollectionAsync("List of Stock Groups", "STOCKGROUP");
@@ -1465,8 +1515,12 @@ namespace Acczite20.Services
                     {
                         Name = GetTallyValue(node, "NAME"),
                         Parent = GetTallyValue(node, "PARENT"),
-                        TallyMasterId = node.Element("MASTERID")?.Value ?? GetTallyValue(node, "NAME"),
-                        TallyAlterId = long.TryParse(node.Element("ALTERID")?.Value, out var aid) ? aid : 0,
+                        TallyMasterId = node.Element("MASTERID")?.Value 
+                                        ?? node.Attribute("MASTERID")?.Value 
+                                        ?? node.Element("GUID")?.Value 
+                                        ?? node.Attribute("GUID")?.Value
+                                        ?? GetTallyValue(node, "NAME"),
+                        TallyAlterId = long.TryParse(node.Element("ALTERID")?.Value ?? node.Attribute("ALTERID")?.Value, out var aid) ? aid : 0,
                         Properties = node.Elements().ToDictionary(e => e.Name.LocalName, e => e.Value)
                     }).ToList();
             }
@@ -1475,7 +1529,11 @@ namespace Acczite20.Services
 
         private static string GetTallyValue(XElement node, string tag)
         {
-            return node.Element(tag)?.Value ?? node.Element(tag.ToUpper())?.Value ?? string.Empty;
+            return node.Element(tag)?.Value 
+                ?? node.Attribute(tag)?.Value 
+                ?? node.Element(tag.ToUpper())?.Value 
+                ?? node.Attribute(tag.ToUpper())?.Value 
+                ?? string.Empty;
         }
 
         private static string GetValue(XElement node, string tag) => GetTallyValue(node, tag);

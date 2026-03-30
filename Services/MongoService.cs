@@ -201,11 +201,6 @@ namespace Acczite20.Services
                 foreach (var field in fields)
                 {
                     filters.Add(builder.Eq(field, orgIdString));
-                    if (Guid.TryParse(orgIdString, out var guid))
-                    {
-                         // Some Mongo drivers might store it as Guid/Binary
-                         filters.Add(builder.Eq(field, guid));
-                    }
                 }
             }
 

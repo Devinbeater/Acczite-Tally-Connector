@@ -44,6 +44,17 @@ namespace Acczite20.Views
                     {
                         session.OrganizationId = organizationId;
                     }
+                    else if (!string.IsNullOrWhiteSpace(sessionData.OrganizationObjectId))
+                    {
+                        // MongoDB ObjectId → deterministic GUID
+                        using var sha = System.Security.Cryptography.SHA256.Create();
+                        var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(sessionData.OrganizationObjectId));
+                        var guidBytes = new byte[16];
+                        Array.Copy(hash, guidBytes, 16);
+                        guidBytes[6] = (byte)((guidBytes[6] & 0x0F) | 0x50);
+                        guidBytes[8] = (byte)((guidBytes[8] & 0x3F) | 0x80);
+                        session.OrganizationId = new Guid(guidBytes);
+                    }
 
                     session.OrganizationObjectId = !string.IsNullOrWhiteSpace(sessionData.OrganizationObjectId)
                         ? sessionData.OrganizationObjectId
