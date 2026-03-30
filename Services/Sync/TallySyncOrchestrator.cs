@@ -180,7 +180,7 @@ namespace Acczite20.Services.Sync
             }
         }
 
-        private async Task RunSyncCycleInternalAsync(CancellationToken ct, DateTimeOffset? fromDate = null, DateTimeOffset? toDate = null, IEnumerable<string>? selectedCollections = null)
+        private async Task RunSyncCycleInternalAsync(CancellationToken ct, DateTimeOffset? fromDate = null, DateTimeOffset? toDate = null, IEnumerable<string>? selectedCollections = null, SyncOwner owner = SyncOwner.HostedService)
         {
             if (_isSyncRunning)
             {
@@ -207,9 +207,9 @@ namespace Acczite20.Services.Sync
                 c.Equals("Day Book", StringComparison.OrdinalIgnoreCase) || 
                 c.Equals("Daybook", StringComparison.OrdinalIgnoreCase));
 
-            if (!_control.TryStart(orgId, SyncOwner.HostedService))
+            if (!_control.TryStart(orgId, owner))
             {
-                _syncMonitor.AddLog("⚠ A synchronization cycle is already active in Control Service. Ignoring.", "WARNING", "CONCURRENCY");
+                _syncMonitor.AddLog($"⚠ A synchronization cycle is already active in Control Service ({owner}). Ignoring.", "WARNING", "CONCURRENCY");
                 return;
             }
 
@@ -231,12 +231,16 @@ namespace Acczite20.Services.Sync
                 var status = await _tallyService.DetectTallyStatusAsync();
                 if (status != TallyConnectionStatus.RunningWithCompany)
                 {
-                    _syncMonitor.FailRun("Tally or Company not ready.");
+                    _syncMonitor.FailRun("Tally or Company not ready. Ensure Tally is open with the correct company.");
                     return;
                 }
 
                 var company = await ResolveOpenCompanyAsync();
-                if (company == null) return;
+                if (company == null)
+                {
+                    _syncMonitor.FailRun("Could not resolve Tally company. Please select a valid company in Tally.");
+                    return;
+                }
 
                 if (syncManagers)
                 {
@@ -253,10 +257,31 @@ namespace Acczite20.Services.Sync
                 {
                     _syncMonitor.SetStage("Voucher Sync", "Streaming transactions...", 50, true);
                     await SyncVouchersWithChannelsAsync(orgId, effectiveCt, fromDate, toDate);
+
+                    _syncMonitor.SetStage("Integrity Verification", "Verifying data parity with Tally...", 90, true);
+                    await RunReconciliationSyncAsync(orgId, effectiveCt);
                 }
 
                 stopwatch.Stop();
-                _syncMonitor.CompleteRun($"Sync completed in {stopwatch.Elapsed:mm\\:ss}.");
+                var total = _syncMonitor.TotalRecordsSynced;
+                var duration = stopwatch.Elapsed;
+
+                if (total == 0)
+                {
+                    _syncMonitor.CompleteRun("Sync completed. No new data found in the selected range.");
+                    _syncMonitor.AddLog("ℹ️ No records found matching the sync criteria.", "INFO", "ORCHESTRATOR");
+                }
+                else
+                {
+                    _syncMonitor.CompleteRun($"Sync successful. Imported {total} records in {duration.TotalSeconds:F1}s.");
+                }
+
+                var dlqCount = _syncMonitor.DeadLetterQueue.Count;
+                if (dlqCount > 0)
+                {
+                    _logger.LogWarning("Sync completed with {DlqCount} voucher(s) in Dead Letter Queue. Review via Sync Monitor → Failed Vouchers.", dlqCount);
+                    _syncMonitor.AddLog($"⚠️ {dlqCount} voucher(s) in Dead Letter Queue — review and replay from Sync Monitor.", "WARN", "ORCHESTRATOR");
+                }
             }
             catch (OperationCanceledException)
             {
@@ -273,6 +298,9 @@ namespace Acczite20.Services.Sync
                 var finalState = _control.GetState(orgId);
                 finalState.Status = SyncLifecycle.Idle;
                 _isSyncRunning = false;
+                
+                // Final UI refresh trigger
+                _syncMonitor.SetProgress(100, "Done");
             }
         }
 
@@ -315,16 +343,18 @@ namespace Acczite20.Services.Sync
         private async Task<string?> ResolveOpenCompanyAsync()
         {
             var selectedCompany = SessionManager.Instance.TallyCompanyName?.Trim();
-            var openCompany = await _tallyCompanyService.GetOpenCompanyAsync();
+            var info = await _tallyService.GetActiveCompanyDetailedAsync();
+            var openCompany = info.Name;
 
-            if (IsUnresolvedCompany(openCompany))
-            {
-                openCompany = await _tallyService.GetCurrentCompanyNameAsync();
-            }
-
-            if (IsUnresolvedCompany(openCompany))
+            if (!info.IsValid)
             {
                 return null;
+            }
+
+            // Verify GUID to prevent context-switching mid-run
+            if (!string.IsNullOrEmpty(info.Guid))
+            {
+                _syncMonitor.AddLog($"🏢 Resolved Tally Company GUID: {info.Guid}", "DEBUG", "ORCHESTRATOR");
             }
 
             if (!string.Equals(selectedCompany, openCompany, StringComparison.OrdinalIgnoreCase))
@@ -365,6 +395,28 @@ namespace Acczite20.Services.Sync
             // Warm up the ID cache for the entire session
             using (var scope = _scopeFactory.CreateScope())
             {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var companyName = SessionManager.Instance.TallyCompanyName;
+                
+                if (!string.IsNullOrEmpty(companyName))
+                {
+                    var company = await db.Companies.FirstOrDefaultAsync(c => c.OrganizationId == orgId && c.Name == companyName, ct);
+                    if (company == null)
+                    {
+                        _syncMonitor.AddLog($"🏢 Company '{companyName}' not found in DB. Creating...", "INFO", "ORCHESTRATOR");
+                        company = new Company
+                        {
+                            Id = Guid.NewGuid(),
+                            OrganizationId = orgId,
+                            Name = companyName,
+                            CreatedAt = DateTimeOffset.UtcNow
+                        };
+                        db.Companies.Add(company);
+                        await db.SaveChangesAsync(ct);
+                        _syncMonitor.AddLog($"✅ Company record created.", "SUCCESS", "ORCHESTRATOR");
+                    }
+                }
+
                 var cache = scope.ServiceProvider.GetRequiredService<MasterDataCache>();
                 await cache.InitializeAsync(orgId);
                 _cache = cache; // Current local cache for producer validation
@@ -865,24 +917,31 @@ namespace Acczite20.Services.Sync
         public async Task RunFullSyncAsync(Guid orgId, DateTimeOffset? fromDate = null, DateTimeOffset? toDate = null, CancellationToken ct = default, IEnumerable<string>? selectedCollections = null)
         {
             var lockKey = $"sync:{orgId}";
-            if (await _lockProvider.AcquireLockAsync(lockKey, TimeSpan.Zero, ct))
+            if (await _lockProvider.AcquireLockAsync(lockKey, TimeSpan.FromSeconds(2), ct))
             {
                 try
                 {
+                    // Ensure the stage is fresh
+                    _syncMonitor.Reset();
+                    _syncMonitor.SetStage("Initialization", "Preparing synchronization environment...", 5, true);
+
                     using (var scope = _scopeFactory.CreateScope())
                     {
                         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                         var meta = await db.SyncMetadataRecords.FirstOrDefaultAsync(m => m.OrganizationId == orgId && m.EntityType == "Voucher", ct);
-                        if (meta != null) meta.LastSuccessfulSync = fromDate;
-                        await db.SaveChangesAsync(ct);
+                        if (meta != null && fromDate.HasValue) 
+                        {
+                            meta.LastSuccessfulSync = fromDate;
+                            await db.SaveChangesAsync(ct);
+                        }
                     }
-                    await RunSyncCycleInternalAsync(ct, fromDate, toDate, selectedCollections);
+                    await RunSyncCycleInternalAsync(ct, fromDate, toDate, selectedCollections, SyncOwner.Manual);
                 }
                 finally { await _lockProvider.ReleaseLockAsync(lockKey); }
             }
             else
             {
-                _syncMonitor.FailRun("Could not acquire sync lock. A synchronization is already running.");
+                _syncMonitor.FailRun("Active Sync Detected: A background or manual synchronization is already in progress. Please wait for it to complete or stop it from the Sync Monitor.");
             }
         }
 

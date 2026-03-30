@@ -166,6 +166,7 @@ namespace Acczite20
 
             // Business Logic Services
             services.AddTransient<DashboardService>();
+            services.AddTransient<DaybookService>();
             services.AddTransient<VoucherExplorerService>();
             services.AddTransient<LedgerExplorerService>();
             services.AddTransient<TrialBalanceService>();

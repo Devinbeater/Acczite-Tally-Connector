@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Acczite20.Services;
 
 namespace Acczite20.Services.Explorer
 {
@@ -46,10 +47,14 @@ namespace Acczite20.Services.Explorer
             _mongoService = mongoService;
         }
 
-        public async Task<List<LedgerListItem>> SearchLedgersAsync(Guid orgId, string search)
+        public async Task<(List<LedgerListItem> Items, long Total)> SearchLedgersAsync(
+            Guid orgId, 
+            string search,
+            int skip = 0,
+            int limit = 50)
         {
             var coll = await _mongoService.GetCollectionAsync("ledgers");
-            if (coll == null) return new List<LedgerListItem>();
+            if (coll == null) return (new List<LedgerListItem>(), 0);
 
             var builder = MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter;
             var filter = _mongoService.GetOrganizationFilter();
@@ -60,7 +65,13 @@ namespace Acczite20.Services.Explorer
                 filter &= searchFilter;
             }
 
-            var accounts = await coll.Find(filter).Limit(200).ToListAsync();
+            var total = await coll.CountDocumentsAsync(filter);
+            var accounts = await coll.Find(filter)
+                .SortBy(x => x["name"])
+                .Skip(skip)
+                .Limit(limit)
+                .ToListAsync();
+
             var results = new List<LedgerListItem>();
 
             foreach (var acc in accounts)
@@ -84,7 +95,7 @@ namespace Acczite20.Services.Explorer
                 });
             }
 
-            return results.OrderBy(x => x.Name).ToList();
+            return (results, total);
         }
 
         public async Task<LedgerDetailDto?> GetLedgerDetailsAsync(string rawId, Guid orgId)

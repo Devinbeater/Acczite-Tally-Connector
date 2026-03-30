@@ -40,14 +40,16 @@ namespace Acczite20.Services.Explorer
             _mongoService = mongoService;
         }
 
-        public async Task<List<VoucherListItem>> SearchVouchersAsync(
+        public async Task<(List<VoucherListItem> Items, long Total)> SearchVouchersAsync(
             Guid orgId,
             string search,
             DateTime? from,
-            DateTime? to)
+            DateTime? to,
+            int skip = 0,
+            int limit = 50)
         {
             var coll = await _mongoService.GetCollectionAsync("journals", "vouchers");
-            if (coll == null) return new List<VoucherListItem>();
+            if (coll == null) return (new List<VoucherListItem>(), 0);
 
             var builder = MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter;
             var filter = _mongoService.GetOrganizationFilter();
@@ -67,12 +69,14 @@ namespace Acczite20.Services.Explorer
                 filter &= builder.Lte("date", to.Value.ToUniversalTime());
             }
 
+            var total = await coll.CountDocumentsAsync(filter);
             var results = await coll.Find(filter)
                 .Sort(MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Sort.Descending("date"))
-                .Limit(200)
+                .Skip(skip)
+                .Limit(limit)
                 .ToListAsync();
 
-            return results.Select(doc => new VoucherListItem
+            var items = results.Select(doc => new VoucherListItem
             {
                 Id = Guid.NewGuid(), // UI expects Guid
                 RawId = doc.GetValue("_id").ToString(),
@@ -83,6 +87,8 @@ namespace Acczite20.Services.Explorer
                 VoucherTypeName = doc.GetValue("voucherTypeName", "").AsString,
                 PartyLedgerName = doc.GetValue("partyLedgerName", doc.GetValue("ledgerName", "—")).AsString
             }).ToList();
+
+            return (items, total);
         }
 
         public async Task<VoucherDetailDto?> GetVoucherAsync(string rawId, Guid orgId)

@@ -23,6 +23,7 @@ namespace Acczite20.Models
         public virtual VoucherType VoucherType { get; set; }
         public virtual ICollection<LedgerEntry> LedgerEntries { get; set; }
         public virtual ICollection<InventoryAllocation> InventoryAllocations { get; set; }
+        public virtual ICollection<BillAllocation> BillAllocations { get; set; }
         public virtual ICollection<GstBreakdown> GstBreakdowns { get; set; }
     }
 }

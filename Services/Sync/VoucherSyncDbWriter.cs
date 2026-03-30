@@ -4,8 +4,10 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using MongoDB.Bson;
 using Acczite20.Infrastructure;
 using Acczite20.Models;
+using Acczite20.Data;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Acczite20.Services.Sync
@@ -69,6 +71,7 @@ namespace Acczite20.Services.Sync
 
             var ledgerCount = vouchersToWrite.Sum(v => v.LedgerEntries?.Count ?? 0);
             var inventoryCount = vouchersToWrite.Sum(v => v.InventoryAllocations?.Count ?? 0);
+            var billCount = vouchersToWrite.Sum(v => v.BillAllocations?.Count ?? 0);
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
             await handler.BulkInsertVouchersAsync(vouchersToWrite);
@@ -81,7 +84,7 @@ namespace Acczite20.Services.Sync
             }
 
             _progress.RecordWritten(vouchersToWrite.Count);
-            _syncMonitor.RecordInsertedBatch(vouchersToWrite.Count, ledgerCount, inventoryCount, _runStopwatch.Elapsed.TotalSeconds);
+            _syncMonitor.RecordInsertedBatch(vouchersToWrite.Count, ledgerCount, inventoryCount, billCount, _runStopwatch.Elapsed.TotalSeconds);
 
             var snapshot = _progress.Snapshot();
             _syncMonitor.SetStage(
@@ -97,17 +100,43 @@ namespace Acczite20.Services.Sync
         }
         private static MongoDB.Bson.BsonDocument ToBsonDocument(Voucher v)
         {
+            var entries       = v.LedgerEntries?.ToList() ?? new List<LedgerEntry>();
+            var partyEntry    = entries.FirstOrDefault(e => e.IsPartyLedger) ?? entries.FirstOrDefault();
+            var partyLedger   = partyEntry?.LedgerName ?? string.Empty;
+            var totalDebit    = entries.Sum(e => e.DebitAmount);
+
             var doc = new MongoDB.Bson.BsonDocument
             {
-                { "organizationId", v.OrganizationId.ToString() },
-                { "tallyMasterId", v.TallyMasterId ?? string.Empty },
-                { "voucherNumber", v.VoucherNumber ?? string.Empty },
-                { "date", v.VoucherDate.ToString("yyyy-MM-dd") },
-                { "type", v.VoucherType?.Name ?? "Journal" },
-                { "amount", (double)Math.Abs(v.LedgerEntries.Where(le => le.DebitAmount > 0).Sum(le => le.DebitAmount)) },
-                { "party", "Unknown" },
-                { "isCancelled", v.IsCancelled },
-                { "updatedAt", DateTime.UtcNow.ToString("O") }
+                { "organizationId",  v.OrganizationId.ToString() },
+                { "tallyMasterId",   v.TallyMasterId  ?? string.Empty },
+                { "voucherNumber",   v.VoucherNumber  ?? string.Empty },
+                { "date",            v.VoucherDate.UtcDateTime },
+                { "voucherTypeName", v.VoucherType?.Name ?? "Journal" },
+                { "narration",       v.Narration      ?? string.Empty },
+                { "totalAmount",     (double)totalDebit },
+                { "partyLedgerName", partyLedger },
+                { "isCancelled",     v.IsCancelled },
+                { "ledgerEntries",   new MongoDB.Bson.BsonArray(entries.Select(e => new MongoDB.Bson.BsonDocument
+                {
+                    { "ledgerName",  e.LedgerName },
+                    { "debit",       (double)e.DebitAmount },
+                    { "credit",      (double)e.CreditAmount },
+                    { "isParty",     e.IsPartyLedger }
+                })) },
+                { "inventoryAllocations", new MongoDB.Bson.BsonArray((v.InventoryAllocations ?? new List<InventoryAllocation>()).Select(i => new MongoDB.Bson.BsonDocument
+                {
+                    { "stockItem",   i.StockItemName },
+                    { "qty",         (double)i.ActualQuantity },
+                    { "rate",        (double)i.Rate },
+                    { "amount",      (double)i.Amount }
+                })) },
+                { "billAllocations", new MongoDB.Bson.BsonArray((v.BillAllocations ?? new List<BillAllocation>()).Select(b => new MongoDB.Bson.BsonDocument
+                {
+                    { "billName",    b.BillName },
+                    { "billType",    b.BillType },
+                    { "amount",      (double)b.Amount }
+                })) },
+                { "updatedAt",       DateTime.UtcNow }
             };
             return doc;
         }

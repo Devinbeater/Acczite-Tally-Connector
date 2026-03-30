@@ -7,7 +7,7 @@
         ResizeMode="NoResize"
         Background="#FFF9F9F9"
         WindowStyle="SingleBorderWindow"
-        Icon="/Assets/app.ico">
+        Icon="pack://application:,,,/Assets/logo.ico">
 
 	<Grid Margin="20">
 		<Grid.RowDefinitions>

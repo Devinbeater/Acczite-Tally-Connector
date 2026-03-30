@@ -35,56 +35,85 @@
 
             <!-- List Panel -->
             <Border Grid.Column="0" Background="{StaticResource BaseWhite}" CornerRadius="8" Margin="0,0,16,0" Effect="{StaticResource CardShadow}" ClipToBounds="True">
-                <DataGrid x:Name="LedgersGrid" 
-                          ItemsSource="{Binding Ledgers}" 
-                          AutoGenerateColumns="False" 
-                          IsReadOnly="True"
-                          SelectionMode="Single"
-                          SelectionChanged="LedgersGrid_SelectionChanged"
-                          HeadersVisibility="Column"
-                          GridLinesVisibility="Horizontal"
-                          HorizontalGridLinesBrush="#E5E7EB"
-                          BorderThickness="0"
-                          Background="Transparent"
-                          RowHeight="40">
-                    
-                    <DataGrid.Resources>
-                        <Style TargetType="DataGridColumnHeader">
-                            <Setter Property="Background" Value="#F3F4F6"/>
-                            <Setter Property="Foreground" Value="#6B7280"/>
-                            <Setter Property="FontWeight" Value="SemiBold"/>
-                            <Setter Property="Padding" Value="12,8"/>
-                            <Setter Property="BorderThickness" Value="0,0,0,1"/>
-                            <Setter Property="BorderBrush" Value="#E5E7EB"/>
-                        </Style>
-                        <Style TargetType="DataGridCell">
-                            <Setter Property="Padding" Value="12,0"/>
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="{x:Type DataGridCell}">
-                                        <Border Padding="{TemplateBinding Padding}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Background="{TemplateBinding Background}" SnapsToDevicePixels="True">
-                                            <ContentPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
-                                        </Border>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                            <Style.Triggers>
-                                <Trigger Property="IsSelected" Value="True">
-                                    <Setter Property="Background" Value="#E0F2F1"/>
-                                    <Setter Property="Foreground" Value="{StaticResource CharcoalText}"/>
-                                    <Setter Property="BorderThickness" Value="0"/>
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </DataGrid.Resources>
+                <DockPanel>
+                    <!-- Pagination Bar -->
+                    <Border DockPanel.Dock="Bottom" Background="#F1F5F9" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0" Padding="12,8">
+                        <Grid>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Showing page " Foreground="#64748B" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding CurrentPage}" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}" VerticalAlignment="Center"/>
+                                <TextBlock Text=" of " Foreground="#64748B" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding TotalPages}" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}" VerticalAlignment="Center"/>
+                                <TextBlock Text=" (" Foreground="#64748B" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding TotalRecords}" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}" VerticalAlignment="Center"/>
+                                <TextBlock Text=" ledgers)" Foreground="#64748B" VerticalAlignment="Center"/>
+                            </StackPanel>
 
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="Ledger Name" Binding="{Binding Name}" Width="1.5*"/>
-                        <DataGridTextColumn Header="Parent Group" Binding="{Binding ParentGroup}" Width="1.2*"/>
-                        <DataGridTextColumn Header="Opening Bal" Binding="{Binding OpeningBalance, StringFormat={}{0:N2}}" Width="1*"/>
-                        <DataGridTextColumn Header="Closing Bal" Binding="{Binding ClosingBalance, StringFormat={}{0:N2}}" Width="1*"/>
-                    </DataGrid.Columns>
-                </DataGrid>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button Content="&#xE72B;" FontFamily="Segoe MDL2 Assets" FontSize="12" 
+                                        ToolTip="Previous Page" Background="Transparent" BorderThickness="0"
+                                        Width="32" Height="32" Click="PrevPage_Click" 
+                                        IsEnabled="{Binding CanGoBack}"/>
+                                <Button Content="&#xE72A;" FontFamily="Segoe MDL2 Assets" FontSize="12" 
+                                        ToolTip="Next Page" Background="Transparent" BorderThickness="0"
+                                        Width="32" Height="32" Margin="4,0,0,0" Click="NextPage_Click"
+                                        IsEnabled="{Binding CanGoForward}"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Data Grid -->
+                    <DataGrid x:Name="LedgersGrid" 
+                              ItemsSource="{Binding Ledgers}" 
+                              AutoGenerateColumns="False" 
+                              IsReadOnly="True"
+                              SelectionMode="Single"
+                              SelectionChanged="LedgersGrid_SelectionChanged"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal"
+                              HorizontalGridLinesBrush="#E5E7EB"
+                              BorderThickness="0"
+                              Background="Transparent"
+                              RowHeight="40">
+                              
+                        <DataGrid.Resources>
+                            <Style TargetType="DataGridColumnHeader">
+                                <Setter Property="Background" Value="#F3F4F6"/>
+                                <Setter Property="Foreground" Value="#6B7280"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="Padding" Value="12,8"/>
+                                <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                                <Setter Property="BorderBrush" Value="#E5E7EB"/>
+                            </Style>
+                            <Style TargetType="DataGridCell">
+                                <Setter Property="Padding" Value="12,0"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="{x:Type DataGridCell}">
+                                            <Border Padding="{TemplateBinding Padding}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Background="{TemplateBinding Background}" SnapsToDevicePixels="True">
+                                                <ContentPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="#E0F2F1"/>
+                                        <Setter Property="Foreground" Value="{StaticResource CharcoalText}"/>
+                                        <Setter Property="BorderThickness" Value="0"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.Resources>
+
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Ledger Name" Binding="{Binding Name}" Width="1.5*"/>
+                            <DataGridTextColumn Header="Parent Group" Binding="{Binding ParentGroup}" Width="1.2*"/>
+                            <DataGridTextColumn Header="Opening Bal" Binding="{Binding OpeningBalance, StringFormat={}{0:N2}}" Width="1*"/>
+                            <DataGridTextColumn Header="Closing Bal" Binding="{Binding ClosingBalance, StringFormat={}{0:N2}}" Width="1*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
             </Border>
 
             <!-- Detail Panel -->

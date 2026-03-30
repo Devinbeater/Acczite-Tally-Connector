@@ -1,8 +1,0 @@
-﻿C:\vaibhav\tallyAcczite\Services\Sync\TallySyncOrchestrator.cs(210,27): error CS7036: There is no argument given that corresponds to the required parameter 'owner' of 'ISyncControlService.TryStart(Guid, SyncOwner)' [C:\vaibhav\tallyAcczite\Acczite20_2s4uh42b_wpftmp.csproj]
-C:\vaibhav\tallyAcczite\Views\Pages\SyncMonitorPage.xaml.cs(219,21): error CS0136: A local or parameter named 'orgId' cannot be declared in this scope because that name is used in an enclosing local scope to define a local or parameter [C:\vaibhav\tallyAcczite\Acczite20_2s4uh42b_wpftmp.csproj]
-
-Build FAILED.
-    274 Warning(s)
-    2 Error(s)
-
-Time Elapsed 00:00:03.16

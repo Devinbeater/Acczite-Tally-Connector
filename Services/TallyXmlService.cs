@@ -12,6 +12,14 @@ using Acczite20.Services.Tally;
 
 namespace Acczite20.Services
 {
+    public class TallyCompanyInfo
+    {
+        public string? Name { get; set; }
+        public string? Guid { get; set; }
+        public DateTimeOffset? BooksFrom { get; set; }
+        public bool IsValid => !string.IsNullOrWhiteSpace(Name) && Name != "None" && Name != "Default Company";
+    }
+
     /// <summary>
     /// Tally connection states for enterprise UI clarity.
     /// </summary>
@@ -49,14 +57,9 @@ namespace Acczite20.Services
         //   2 failures → 6000ms (capped)
         //   3 failures → circuit opens
         // ── Backoff timing ─────────────────────────────────────────────────────────
-        // BaseDelayMs × 2^failures gives the inter-request floor.
-        //   0 failures → 4000ms
-        //   1 failure  → 8000ms
-        //   2 failures → 16000ms
-        //   3 failures → circuit opens
-        private const int BaseDelayMs       = 4000;   // hard floor between any two requests
-        private const int MaxDelayMs        = 30_000; // Tally needs up to 60s to recover after a crash
-        private const int StreamExtraCostMs = 2500;   // extra headroom for streaming exports on top of backoff
+        private const int BaseDelayMs       = 1000;   // hard floor between any two requests (was 4000)
+        private const int MaxDelayMs        = 25_000; 
+        private const int StreamExtraCostMs = 1500;   
 
         // ── Adaptive penalty ───────────────────────────────────────────────────────
         // _extraDelayMs accumulates +1500ms each time a response takes > 8s
@@ -179,6 +182,57 @@ namespace Acczite20.Services
                 return !string.IsNullOrWhiteSpace(xml);
             }
             catch { return false; }
+        }
+
+        public async Task<TallyCompanyInfo> GetActiveCompanyDetailedAsync()
+        {
+            var envelope = @"
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>AccziteActiveCompanyDetailed</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME=""AccziteActiveCompanyDetailed"" ISMODIFY=""No"">
+            <TYPE>Company</TYPE>
+            <FETCH>NAME, GUID, BOOKSFROM</FETCH>
+          </COLLECTION>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>";
+            var info = new TallyCompanyInfo();
+            try
+            {
+                var response = await SendEnvelopeAsync(envelope);
+                if (string.IsNullOrWhiteSpace(response)) return info;
+
+                var doc = XDocument.Parse(response);
+                var comp = doc.Descendants("COMPANY").FirstOrDefault();
+                if (comp != null)
+                {
+                    info.Name = comp.Element("NAME")?.Value?.Trim();
+                    info.Guid = comp.Element("GUID")?.Value?.Trim();
+                    var bFrom = comp.Element("BOOKSFROM")?.Value;
+                    if (DateTimeOffset.TryParseExact(bFrom, "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out var dto))
+                        info.BooksFrom = dto;
+                }
+                
+                // Fallback for Name if ID-based fetch is weird
+                if (string.IsNullOrEmpty(info.Name)) info.Name = ExtractCompanyName(response);
+                
+                return info;
+            }
+            catch { return info; }
         }
 
         public async Task<string> GetCurrentCompanyNameAsync()
@@ -487,7 +541,88 @@ namespace Acczite20.Services
             catch { return 0; }
         }
 
+        public async Task<Dictionary<string, int>> GetMultiCollectionCountsAsync(IEnumerable<string> collections)
+        {
+            var results = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var collList = collections.ToList();
+            if (collList.Count == 0) return results;
 
+            // Mapping friendly display names to Tally native collection types
+            var mapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "List of Ledgers", "Ledger" },
+                { "List of Groups", "Group" },
+                { "List of Voucher Types", "VoucherType" },
+                { "List of Stock Items", "StockItem" },
+                { "List of Stock Groups", "StockGroup" },
+                { "List of Cost Centres", "CostCentre" },
+                { "List of Cost Categories", "CostCategory" },
+                { "List of Currencies", "Currency" },
+                { "List of Budgets", "Budget" },
+                { "List of Units", "Unit" },
+                { "List of Godowns", "Godown" },
+                { "List of Payroll Categories", "PayrollCategory" },
+                { "List of Payroll Cost Centres", "PayrollCostCentre" },
+                { "List of Attendance Types", "AttendanceType" },
+                { "List of Employees", "Employee" },
+                { "Voucher", "Voucher" },
+                { "Day Book", "Voucher" },
+                { "Daybook", "Voucher" }
+            };
+
+            var sb = new StringBuilder();
+            foreach (var c in collList)
+            {
+                var cleanName = c.Replace(" ", "_").Replace("&", "And");
+                var native = mapping.TryGetValue(c, out var n) ? n : c.Replace("List of ", "");
+                sb.AppendLine($"              <NATIVEMETHOD>{cleanName}:$$NumItems:{native}</NATIVEMETHOD>");
+            }
+
+            var envelope = $@"
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>AccziteBatchCounts</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME=""AccziteBatchCounts"">
+            <TYPE>Company</TYPE>
+{sb}
+          </COLLECTION>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>";
+
+            try
+            {
+                var response = await SendEnvelopeAsync(envelope);
+                if (string.IsNullOrWhiteSpace(response)) return results;
+
+                var doc = XDocument.Parse(response);
+                foreach (var c in collList)
+                {
+                    var tagName = c.Replace(" ", "_").Replace("&", "And");
+                    var val = doc.Descendants().FirstOrDefault(x => x.Name.LocalName.Equals(tagName, StringComparison.OrdinalIgnoreCase))?.Value;
+                    if (int.TryParse(val, out var count))
+                        results[c] = count;
+                    else
+                        results[c] = 0;
+                }
+            }
+            catch { }
+
+            return results;
+        }
 
         public async Task<string?> ExportCollectionXmlAsync(string collectionOrReport, DateTimeOffset? fromDate = null, DateTimeOffset? toDate = null, bool isCollection = true, string? idList = null, string? customTdl = null, Dictionary<string, string>? variables = null)
         {

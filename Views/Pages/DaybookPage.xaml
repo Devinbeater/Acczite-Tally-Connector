@@ -2,13 +2,19 @@
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:ui="http://schemas.modernwpf.com/2019"
+      xmlns:converters="clr-namespace:Acczite20.Views.Converters"
       Title="Daybook" Background="Transparent"
       Loaded="Page_Loaded">
+    <Page.Resources>
+        <converters:StringToVisibilityConverter x:Key="StringToVisibilityConverter"/>
+    </Page.Resources>
 
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- Header Section -->
@@ -92,13 +98,20 @@
                     </DataGrid.Resources>
 
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Date" Binding="{Binding VoucherDate, StringFormat=\{0:dd-MM-yyyy\}}" Width="100"/>
+                        <DataGridTextColumn Header="Date"   Binding="{Binding VoucherDate, StringFormat=\{0:dd-MM-yyyy\}}" Width="100"/>
                         <DataGridTextColumn Header="Vch No" Binding="{Binding VoucherNumber}" Width="80"/>
+                        <DataGridTextColumn Header="Type"   Binding="{Binding VoucherType}"   Width="100"/>
                         <DataGridTemplateColumn Header="Particulars" Width="*">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding MainLedgerName}" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}"/>
+                                    <StackPanel VerticalAlignment="Center" Margin="0,4">
+                                        <TextBlock Text="{Binding MainLedgerName}"
+                                                   FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding Narration}"
+                                                   FontSize="11" Foreground="{StaticResource GrayText}"
+                                                   TextTrimming="CharacterEllipsis" Opacity="0.8"
+                                                   Visibility="{Binding Narration, Converter={StaticResource StringToVisibilityConverter}}"/>
                                     </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
@@ -106,18 +119,20 @@
                         <DataGridTemplateColumn Header="Debit" Width="130">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding DebitAmount, StringFormat=\{0:N2\}}"
+                                    <TextBlock Text="{Binding DebitDisplay}"
                                                HorizontalAlignment="Right" VerticalAlignment="Center"
-                                               FontWeight="Bold" Foreground="#1E40AF"/>
+                                               FontWeight="SemiBold" Foreground="#1E40AF"
+                                               FontFamily="Consolas"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
                         <DataGridTemplateColumn Header="Credit" Width="130">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding CreditAmount, StringFormat=\{0:N2\}}"
+                                    <TextBlock Text="{Binding CreditDisplay}"
                                                HorizontalAlignment="Right" VerticalAlignment="Center"
-                                               FontWeight="Bold" Foreground="#DC2626"/>
+                                               FontWeight="SemiBold" Foreground="#DC2626"
+                                               FontFamily="Consolas"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
@@ -135,6 +150,49 @@
 
                 <!-- Loading State -->
                 <ui:ProgressRing x:Name="LoadingRing" IsActive="False" Visibility="Collapsed" Width="48" Height="48" Foreground="{StaticResource PrimaryTeal}"/>
+            </Grid>
+        </Border>
+
+        <!-- Totals Footer -->
+        <Border x:Name="TotalsBar" Grid.Row="2" Background="#F8FAFC"
+                BorderBrush="#E2E8F0" BorderThickness="0,1,0,0"
+                Padding="16,10" Margin="0,0,0,0" Visibility="Collapsed">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="130"/>
+                    <ColumnDefinition Width="130"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Period Totals"
+                           FontWeight="SemiBold" FontSize="12" Foreground="#64748B"
+                           VerticalAlignment="Center"/>
+                <TextBlock x:Name="TxtTotalDebit" Grid.Column="1"
+                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                           FontWeight="Bold" Foreground="#1E40AF" FontFamily="Consolas" FontSize="13"/>
+                <TextBlock x:Name="TxtTotalCredit" Grid.Column="2"
+                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                           FontWeight="Bold" Foreground="#DC2626" FontFamily="Consolas" FontSize="13"/>
+            </Grid>
+        </Border>
+
+        <!-- Pagination Bar -->
+        <Border x:Name="PaginationBar" Grid.Row="3" Padding="16,10" Visibility="Collapsed">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="TxtPageInfo" Grid.Column="0"
+                           FontSize="12" Foreground="{StaticResource GrayText}"
+                           VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button x:Name="BtnPrev" Content="← Prev" Click="BtnPrev_Click"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            Height="32" Width="80" Margin="0,0,8,0"/>
+                    <Button x:Name="BtnNext" Content="Next →" Click="BtnNext_Click"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            Height="32" Width="80"/>
+                </StackPanel>
             </Grid>
         </Border>
     </Grid>

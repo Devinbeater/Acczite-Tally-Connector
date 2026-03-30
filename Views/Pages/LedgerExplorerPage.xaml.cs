@@ -26,6 +26,37 @@ namespace Acczite20.Views.Pages
             set { _ledgers = value; OnPropertyChanged(); }
         }
 
+        private int _currentPage = 1;
+        public int CurrentPage
+        {
+            get => _currentPage;
+            set { _currentPage = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanGoBack)); OnPropertyChanged(nameof(CanGoForward)); }
+        }
+
+        private int _totalPages = 1;
+        public int TotalPages
+        {
+            get => _totalPages;
+            set { _totalPages = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanGoForward)); }
+        }
+
+        private long _totalRecords = 0;
+        public long TotalRecords
+        {
+            get => _totalRecords;
+            set { _totalRecords = value; OnPropertyChanged(); }
+        }
+
+        private int _pageSize = 50;
+        public int PageSize
+        {
+            get => _pageSize;
+            set { _pageSize = value; OnPropertyChanged(); }
+        }
+
+        public bool CanGoBack => CurrentPage > 1;
+        public bool CanGoForward => CurrentPage < TotalPages;
+
         private LedgerDetailDto? _selectedLedger;
         public LedgerDetailDto? SelectedLedger
         {
@@ -43,16 +74,6 @@ namespace Acczite20.Views.Pages
 
         private async void LedgerExplorerPage_Loaded(object sender, RoutedEventArgs e)
         {
-            // Handle Drill-down navigation state
-            if (NavigationService != null && NavigationService.Content == this)
-            {
-               // This is tricky in WPF without OnNavigatedTo. 
-               // However, my NavigationService.NavigateTo passes state.
-               // ModernWPF Frame.Navigate(page, state) stores it in Frame.NavigationService.Content
-            }
-            
-            // For now, if state was passed via some global or property, we'd use it.
-            // Let's assume most page navigation passes thru the DI-resolved instance.
             await LoadLedgersAsync();
         }
 
@@ -61,13 +82,20 @@ namespace Acczite20.Views.Pages
             var orgId = SessionManager.Instance.OrganizationId;
             if (orgId == Guid.Empty && string.IsNullOrEmpty(SessionManager.Instance.OrganizationObjectId)) return;
 
-            var results = await _explorerService.SearchLedgersAsync(
+            int skip = (CurrentPage - 1) * PageSize;
+            var (items, total) = await _explorerService.SearchLedgersAsync(
                 orgId,
-                SearchBox.Text
+                SearchBox.Text,
+                skip,
+                PageSize
             );
 
+            TotalRecords = total;
+            TotalPages = (int)Math.Ceiling((double)total / PageSize);
+            if (TotalPages == 0) TotalPages = 1;
+
             Ledgers.Clear();
-            foreach (var item in results)
+            foreach (var item in items)
             {
                 Ledgers.Add(item);
             }
@@ -77,7 +105,26 @@ namespace Acczite20.Views.Pages
         {
             DetailPanel.Visibility = Visibility.Hidden;
             SelectedLedger = null;
+            CurrentPage = 1;
             await LoadLedgersAsync();
+        }
+
+        private async void PrevPage_Click(object sender, RoutedEventArgs e)
+        {
+            if (CurrentPage > 1)
+            {
+                CurrentPage--;
+                await LoadLedgersAsync();
+            }
+        }
+
+        private async void NextPage_Click(object sender, RoutedEventArgs e)
+        {
+            if (CurrentPage < TotalPages)
+            {
+                CurrentPage++;
+                await LoadLedgersAsync();
+            }
         }
 
         private async void LedgersGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)

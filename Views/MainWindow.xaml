@@ -7,7 +7,7 @@
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource LightTealBg}"
         FontFamily="Segoe UI"
-        Icon="pack://application:,,,/Assets/app.ico">
+        Icon="pack://application:,,,/Assets/logo.ico">
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="SidebarColumn" Width="240"/>
@@ -18,11 +18,24 @@
         <Border x:Name="SidebarPanel" Grid.Column="0" Background="{StaticResource BaseWhite}" BorderBrush="{StaticResource GoldMetallic}" BorderThickness="0,0,1,0">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
-                    <TextBlock Text="ACCZITE" 
-                               FontSize="22"
-                               FontWeight="SemiBold"
-                               Foreground="{StaticResource PrimaryTeal}"
-                               Margin="24,32,24,40"/>
+                    <StackPanel Orientation="Horizontal" Margin="24,32,24,40">
+                        <Border Width="38" Height="38" CornerRadius="19" Background="White" Margin="0,0,14,0">
+                            <Image Source="pack://application:,,,/Assets/logo.jpg" 
+                                   Width="30" 
+                                   Height="30" 
+                                   HorizontalAlignment="Center" 
+                                   VerticalAlignment="Center">
+                                <Image.Clip>
+                                    <EllipseGeometry Center="15,15" RadiusX="15" RadiusY="15"/>
+                                </Image.Clip>
+                            </Image>
+                        </Border>
+                        <TextBlock Text="ACCZITE" 
+                                   FontSize="24"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource PrimaryTeal}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
 
                     <Button x:Name="NavPulseButton" Style="{StaticResource SidebarButtonStyle}" Content="📈 Business Pulse" Click="NavPulse_Click"/>
                     <Button x:Name="NavDashboardButton" Style="{StaticResource SidebarButtonStyle}" Content="🔄 Sync Status" Click="NavDashboard_Click"/>

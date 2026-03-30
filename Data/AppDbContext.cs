@@ -23,6 +23,7 @@ namespace Acczite20.Data
         public DbSet<VoucherType> VoucherTypes { get; set; }
         public DbSet<Voucher> Vouchers { get; set; }
         public DbSet<InventoryAllocation> InventoryAllocations { get; set; }
+        public DbSet<BillAllocation> BillAllocations { get; set; }
         public DbSet<GstBreakdown> GstBreakdowns { get; set; }
         public DbSet<LedgerEntry> LedgerEntries { get; set; }
         public DbSet<Ledger> Ledgers { get; set; }
@@ -124,15 +125,27 @@ namespace Acczite20.Data
                 .HasIndex(m => new { m.OrganizationId, m.CreatedAt });
 
             // ── Warehouse Indexes (High Performance) ──
+
+            // Covers ORDER BY VoucherDate, VoucherNumber + paging (Query 1 in DaybookService)
             modelBuilder.Entity<FactVoucher>()
-                .HasIndex(f => new { f.OrganizationId, f.VoucherDate });
+                .HasIndex(f => new { f.OrganizationId, f.VoucherDate, f.VoucherNumber });
             modelBuilder.Entity<FactVoucher>()
                 .HasIndex(f => f.VoucherTypeId);
 
+            // Covering index: satisfies period-totals JOIN on (OrgId, VoucherDate)
+            // and INCLUDE avoids bookmark lookups on Debit/Credit/LedgerId reads
+            modelBuilder.Entity<FactLedgerEntry>()
+                .HasIndex(f => new { f.OrganizationId, f.VoucherDate, f.VoucherId })
+                .IncludeProperties(f => new { f.Debit, f.Credit, f.LedgerId });
+
+            // Kept for the per-page ledger aggregate (WHERE VoucherId IN (...))
             modelBuilder.Entity<FactLedgerEntry>()
                 .HasIndex(f => new { f.OrganizationId, f.LedgerId, f.VoucherDate });
-            modelBuilder.Entity<FactLedgerEntry>()
-                .HasIndex(f => f.VoucherId);
+
+            // Unique: enforce exactly one narration per voucher to prevent duplicate rows in Query 1
+            modelBuilder.Entity<FactNarration>()
+                .HasIndex(f => f.VoucherId)
+                .IsUnique();
 
             modelBuilder.Entity<FactInventoryMovement>()
                 .HasIndex(f => new { f.OrganizationId, f.StockItemId, f.VoucherDate });
@@ -179,6 +192,12 @@ namespace Acczite20.Data
                 .HasOne(g => g.Voucher)
                 .WithMany(v => v.GstBreakdowns)
                 .HasForeignKey(g => g.VoucherId)
+                .OnDelete(DeleteBehavior.Restrict);
+            
+            modelBuilder.Entity<BillAllocation>()
+                .HasOne(b => b.Voucher)
+                .WithMany(v => v.BillAllocations)
+                .HasForeignKey(b => b.VoucherId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<Invoice>()

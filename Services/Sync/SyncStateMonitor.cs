@@ -328,6 +328,18 @@ namespace Acczite20.Services.Sync
             }
         }
 
+        private int _currentBatchBillAllocations;
+        public int CurrentBatchBillAllocations
+        {
+            get => _currentBatchBillAllocations;
+            set
+            {
+                _currentBatchBillAllocations = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(LastBatchSummary));
+            }
+        }
+
         private bool _isProgressIndeterminate;
         public bool IsProgressIndeterminate
         {
@@ -355,7 +367,8 @@ namespace Acczite20.Services.Sync
 
         public string LastBatchSummary => CurrentBatchVouchers <= 0
             ? "Waiting for the first insert batch"
-            : $"Last batch {CurrentBatchVouchers:N0} vouchers | {CurrentBatchLedgerEntries:N0} ledgers | {CurrentBatchInventoryEntries:N0} inventory rows";
+            : $"Last batch {CurrentBatchVouchers:N0} vch | {CurrentBatchLedgerEntries:N0} ldg | {CurrentBatchInventoryEntries:N0} inv | {CurrentBatchBillAllocations:N0} bills";
+    
 
         public void RecordError(string masterId, string reference, string error)
         {
@@ -383,6 +396,7 @@ namespace Acczite20.Services.Sync
             CurrentBatchVouchers = 0;
             CurrentBatchLedgerEntries = 0;
             CurrentBatchInventoryEntries = 0;
+            CurrentBatchBillAllocations = 0;
             VouchersPerSecond = 0;
             MemoryUsage = GetCurrentMemoryUsage();
             CurrentStage = title;
@@ -437,11 +451,12 @@ namespace Acczite20.Services.Sync
             IsProgressIndeterminate = isIndeterminate;
         }
 
-        public void RecordInsertedBatch(int vouchers, int ledgerEntries, int inventoryEntries, double elapsedSeconds)
+        public void RecordInsertedBatch(int vouchers, int ledgerEntries, int inventoryEntries, int billAllocations, double elapsedSeconds)
         {
             CurrentBatchVouchers = vouchers;
             CurrentBatchLedgerEntries = ledgerEntries;
             CurrentBatchInventoryEntries = inventoryEntries;
+            CurrentBatchBillAllocations = billAllocations;
             TotalRecordsSynced += vouchers;
             UpdateMetrics(TotalRecordsSynced, elapsedSeconds);
 

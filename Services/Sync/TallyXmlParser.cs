@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml.Linq;
+using Acczite20.Models;
 
 namespace Acczite20.Services.Sync
 {
@@ -110,6 +111,7 @@ namespace Acczite20.Services.Sync
                 VoucherType    = new Acczite20.Models.VoucherType { Name = vTypeName },
                 LedgerEntries        = new List<Acczite20.Models.LedgerEntry>(),
                 InventoryAllocations = new List<Acczite20.Models.InventoryAllocation>(),
+                BillAllocations      = new List<Acczite20.Models.BillAllocation>(),
                 GstBreakdowns        = new List<Acczite20.Models.GstBreakdown>()
             };
 
@@ -153,8 +155,16 @@ namespace Acczite20.Services.Sync
                 if (string.IsNullOrWhiteSpace(ledgerName)) continue;
 
                 decimal amount = decimal.TryParse(GetValue(lNode, "AMOUNT"), out var a) ? a : 0;
-                decimal debit  = amount < 0 ? Math.Abs(amount) : 0;
-                decimal credit = amount > 0 ? amount : 0;
+                // TALLY SIGN CONVENTION (CRITICAL — DO NOT CHANGE):
+                // +Amount → Debit  |  -Amount → Credit
+                // Source: Tally ALLLEDGERENTRIES.AMOUNT spec + master sync comment
+                // Changing this breaks Trial Balance, P&L, Balance Sheet, GST — system-wide.
+                decimal debit  = amount > 0 ? amount : 0;
+                decimal credit = amount < 0 ? Math.Abs(amount) : 0;
+
+                // Invariant guard: catch future regressions immediately at parse time
+                if (amount > 0 && credit != 0) throw new InvalidOperationException($"Sign invariant violated for '{ledgerName}': positive amount mapped to Credit.");
+                if (amount < 0 && debit   != 0) throw new InvalidOperationException($"Sign invariant violated for '{ledgerName}': negative amount mapped to Debit.");
 
                 voucher.LedgerEntries.Add(new Acczite20.Models.LedgerEntry
                 {
@@ -174,6 +184,26 @@ namespace Acczite20.Services.Sync
                     var stockItem = GetValue(iNode, "STOCKITEMNAME");
                     if (!string.IsNullOrWhiteSpace(stockItem))
                         TryAddInventoryAllocation(voucher, inventoryKeys, iNode, stockItem, orgId);
+                }
+                
+                // Bill allocations nested under ledger entries
+                foreach (var bNode in lNode.Descendants().Where(x =>
+                             x.Name.LocalName.Equals("BILLALLOCATIONS.LIST", StringComparison.OrdinalIgnoreCase)))
+                {
+                    var bName = GetValue(bNode, "NAME");
+                    if (!string.IsNullOrWhiteSpace(bName))
+                    {
+                        voucher.BillAllocations.Add(new Acczite20.Models.BillAllocation
+                        {
+                            Id = Guid.NewGuid(),
+                            OrganizationId = orgId,
+                            VoucherId = voucher.Id,
+                            LedgerId = Guid.Empty, // Will be matched during bulk insert to the correct ledger record
+                            BillName = bName,
+                            BillType = GetValue(bNode, "BILLTYPE"),
+                            Amount = decimal.TryParse(GetValue(bNode, "AMOUNT"), out var bAmt) ? Math.Abs(bAmt) : 0
+                        });
+                    }
                 }
 
                 // GST breakdowns nested under ledger entries
@@ -277,8 +307,16 @@ namespace Acczite20.Services.Sync
                 if (string.IsNullOrWhiteSpace(ledgerName)) continue;
 
                 decimal amount = decimal.TryParse(GetValue(lNode, "AMOUNT"), out var a) ? a : 0;
-                decimal debit  = amount < 0 ? Math.Abs(amount) : 0;
-                decimal credit = amount > 0 ? amount : 0;
+                // TALLY SIGN CONVENTION (CRITICAL — DO NOT CHANGE):
+                // +Amount → Debit  |  -Amount → Credit
+                // Source: Tally ALLLEDGERENTRIES.AMOUNT spec + master sync comment
+                // Changing this breaks Trial Balance, P&L, Balance Sheet, GST — system-wide.
+                decimal debit  = amount > 0 ? amount : 0;
+                decimal credit = amount < 0 ? Math.Abs(amount) : 0;
+
+                // Invariant guard: catch future regressions immediately at parse time
+                if (amount > 0 && credit != 0) throw new InvalidOperationException($"Sign invariant violated for '{ledgerName}': positive amount mapped to Credit.");
+                if (amount < 0 && debit   != 0) throw new InvalidOperationException($"Sign invariant violated for '{ledgerName}': negative amount mapped to Debit.");
 
                 voucher.LedgerEntries.Add(new Acczite20.Models.LedgerEntry
                 {
@@ -297,6 +335,26 @@ namespace Acczite20.Services.Sync
                     var stockItem = GetValue(iNode, "STOCKITEMNAME");
                     if (!string.IsNullOrWhiteSpace(stockItem))
                         TryAddInventoryAllocation(voucher, inventoryKeys, iNode, stockItem, orgId);
+                }
+                
+                // Bill allocations nested under ledger entries (Split Pass)
+                foreach (var bNode in lNode.Descendants().Where(x =>
+                             x.Name.LocalName.Equals("BILLALLOCATIONS.LIST", StringComparison.OrdinalIgnoreCase)))
+                {
+                    var bName = GetValue(bNode, "NAME");
+                    if (!string.IsNullOrWhiteSpace(bName))
+                    {
+                         voucher.BillAllocations.Add(new Acczite20.Models.BillAllocation
+                         {
+                             Id = Guid.NewGuid(),
+                             OrganizationId = orgId,
+                             VoucherId = voucher.Id,
+                             LedgerId = Guid.Empty,
+                             BillName = bName,
+                             BillType = GetValue(bNode, "BILLTYPE"),
+                             Amount = decimal.TryParse(GetValue(bNode, "AMOUNT"), out var bAmt) ? Math.Abs(bAmt) : 0
+                         });
+                    }
                 }
 
                 if (ledgerName.Contains("GST", StringComparison.OrdinalIgnoreCase))

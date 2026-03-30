@@ -109,6 +109,20 @@ namespace Acczite20.Infrastructure
                     doc["inventoryEntries"] = items;
                 }
 
+                if (v.BillAllocations != null && v.BillAllocations.Any())
+                {
+                    var bills = new BsonArray();
+                    foreach (var ba in v.BillAllocations)
+                    {
+                        bills.Add(new BsonDocument {
+                            { "billName", ba.BillName },
+                            { "billType", ba.BillType },
+                            { "amount", (double)ba.Amount }
+                        });
+                    }
+                    doc["billAllocations"] = bills;
+                }
+
                 return doc;
             });
 
@@ -233,6 +247,7 @@ namespace Acczite20.Infrastructure
                 DataTable ledgerTable = GetLedgerEntryDataTable(vouchers.SelectMany(v => v.LedgerEntries).ToList());
                 DataTable inventoryTable = GetInventoryAllocationsTable(vouchers.SelectMany(v => v.InventoryAllocations).ToList());
                 DataTable gstTable = GetGstBreakdownDataTable(vouchers.SelectMany(v => v.GstBreakdowns).ToList());
+                DataTable billTable = GetBillAllocationsTable(vouchers.SelectMany(v => v.BillAllocations).ToList());
 
                 using (var bulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.Default, transaction))
                 {
@@ -249,6 +264,7 @@ namespace Acczite20.Infrastructure
                     await PerformBulkCopy(ledgerTable, "LedgerEntries");
                     await PerformBulkCopy(inventoryTable, "InventoryAllocations");
                     await PerformBulkCopy(gstTable, "GstBreakdowns");
+                    await PerformBulkCopy(billTable, "BillAllocations");
                 }
 
                 await transaction.CommitAsync();
@@ -286,6 +302,7 @@ namespace Acczite20.Infrastructure
             // otherwise we delete children manually based on VoucherId)
             var deleteSql = $@"
                 DELETE FROM GstBreakdowns WHERE VoucherId IN (SELECT Id FROM Vouchers WHERE TallyMasterId IN (SELECT MasterId FROM {tempTableName}));
+                DELETE FROM BillAllocations WHERE VoucherId IN (SELECT Id FROM Vouchers WHERE TallyMasterId IN (SELECT MasterId FROM {tempTableName}));
                 DELETE FROM InventoryAllocations WHERE VoucherId IN (SELECT Id FROM Vouchers WHERE TallyMasterId IN (SELECT MasterId FROM {tempTableName}));
                 DELETE FROM LedgerEntries WHERE VoucherId IN (SELECT Id FROM Vouchers WHERE TallyMasterId IN (SELECT MasterId FROM {tempTableName}));
                 DELETE FROM Vouchers WHERE TallyMasterId IN (SELECT MasterId FROM {tempTableName});
@@ -349,10 +366,11 @@ namespace Acczite20.Infrastructure
 
             // Delete existing records (Explicitly handle children if FKs are not ON DELETE CASCADE)
             var deleteSql = $@"
-                DELETE FROM GstBreakdowns WHERE VoucherId IN (SELECT Id FROM Vouchers WHERE TallyMasterId IN (SELECT MasterId FROM {tempTableName}));
-                DELETE FROM InventoryAllocations WHERE VoucherId IN (SELECT Id FROM Vouchers WHERE TallyMasterId IN (SELECT MasterId FROM {tempTableName}));
-                DELETE FROM LedgerEntries WHERE VoucherId IN (SELECT Id FROM Vouchers WHERE TallyMasterId IN (SELECT MasterId FROM {tempTableName}));
-                DELETE FROM Vouchers WHERE TallyMasterId IN (SELECT MasterId FROM {tempTableName});
+                DELETE FROM GstBreakdowns WHERE VoucherId IN (SELECT Id FROM Vouchers WHERE TallyMasterId IN (SELECT MasterId FROM `{tempTableName}`));
+                DELETE FROM BillAllocations WHERE VoucherId IN (SELECT Id FROM Vouchers WHERE TallyMasterId IN (SELECT MasterId FROM `{tempTableName}`));
+                DELETE FROM InventoryAllocations WHERE VoucherId IN (SELECT Id FROM Vouchers WHERE TallyMasterId IN (SELECT MasterId FROM `{tempTableName}`));
+                DELETE FROM LedgerEntries WHERE VoucherId IN (SELECT Id FROM Vouchers WHERE TallyMasterId IN (SELECT MasterId FROM `{tempTableName}`));
+                DELETE FROM Vouchers WHERE TallyMasterId IN (SELECT MasterId FROM `{tempTableName}`);
             ";
 
             using (var cmd = new MySqlConnector.MySqlCommand(deleteSql, conn, trans))
@@ -497,6 +515,22 @@ namespace Acczite20.Infrastructure
             table.Columns.Add("VoucherDate", typeof(DateTimeOffset));
             table.Columns.Add("OrganizationId", typeof(Guid));
             foreach (var m in moves) table.Rows.Add(m.Id, m.VoucherId, m.StockItemId, m.Quantity, m.Amount, m.VoucherDate, m.OrganizationId);
+            return table;
+        }
+        private DataTable GetBillAllocationsTable(List<BillAllocation> bills)
+        {
+            var table = new DataTable("BillAllocations");
+            table.Columns.Add("Id", typeof(Guid));
+            table.Columns.Add("OrganizationId", typeof(Guid));
+            table.Columns.Add("VoucherId", typeof(Guid));
+            table.Columns.Add("BillName", typeof(string));
+            table.Columns.Add("BillType", typeof(string));
+            table.Columns.Add("Amount", typeof(decimal));
+
+            foreach (var b in bills)
+            {
+                table.Rows.Add(b.Id, b.OrganizationId, b.VoucherId, b.BillName, b.BillType, b.Amount);
+            }
             return table;
         }
         #endregion

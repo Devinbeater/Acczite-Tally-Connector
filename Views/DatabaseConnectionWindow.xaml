@@ -7,7 +7,7 @@
         Background="#FAFAFA"
         ResizeMode="CanResize"
         FontFamily="Times New Roman"
-        Icon="/Assets/app.ico">
+        Icon="pack://application:,,,/Assets/logo.ico">
 
 	<Window.Resources>
 		<!-- Primary Button Style -->

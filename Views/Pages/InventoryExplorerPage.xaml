@@ -28,33 +28,56 @@
         <Border Grid.Row="2" Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="20" Effect="{StaticResource CardShadow}">
             <Grid>
                 <ui:ProgressRing x:Name="LoadingRing" IsActive="True" Visibility="Collapsed" VerticalAlignment="Center" HorizontalAlignment="Center"/>
-                <DataGrid x:Name="InventoryGrid" AutoGenerateColumns="False" IsReadOnly="True" 
-                          Background="Transparent" BorderThickness="0" GridLinesVisibility="Horizontal"
-                          HeadersVisibility="Column" SelectionUnit="FullRow">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="Item Name" Binding="{Binding Name}" Width="2*"/>
-                        <DataGridTextColumn Header="Stock Group" Binding="{Binding StockGroup}" Width="*"/>
-                        <DataGridTextColumn Header="Unit" Binding="{Binding BaseUnit}" Width="Auto"/>
-                        <DataGridTextColumn Header="Opening" Binding="{Binding OpeningBalance, StringFormat=\{0:N2\}}" Width="Auto">
-                            <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="HorizontalAlignment" Value="Right"/>
-                                    <Setter Property="Margin" Value="0,0,10,0"/>
-                                </Style>
-                            </DataGridTextColumn.ElementStyle>
-                        </DataGridTextColumn>
-                        <DataGridTextColumn Header="Closing Stock" Binding="{Binding ClosingBalance, StringFormat=\{0:N2\}}" Width="Auto">
-                            <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="HorizontalAlignment" Value="Right"/>
-                                    <Setter Property="Margin" Value="0,0,10,0"/>
-                                    <Setter Property="FontWeight" Value="Bold"/>
-                                    <Setter Property="Foreground" Value="{StaticResource PrimaryTeal}"/>
-                                </Style>
-                            </DataGridTextColumn.ElementStyle>
-                        </DataGridTextColumn>
-                    </DataGrid.Columns>
-                </DataGrid>
+                <DockPanel>
+                    <!-- Pagination Bar -->
+                    <Border DockPanel.Dock="Bottom" Background="#F1F5F9" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0" Padding="12,8" Margin="-20,0,-20,-20">
+                        <Grid>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
+                                <TextBlock Text="Showing page " Foreground="#64748B" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding CurrentPage}" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}" VerticalAlignment="Center"/>
+                                <TextBlock Text=" of " Foreground="#64748B" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding TotalPages}" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}" VerticalAlignment="Center"/>
+                                <TextBlock Text=" (" Foreground="#64748B" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding TotalRecords}" FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}" VerticalAlignment="Center"/>
+                                <TextBlock Text=" items)" Foreground="#64748B" VerticalAlignment="Center"/>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,20,0">
+                                <Button Content="&#xE72B;" FontFamily="Segoe MDL2 Assets" FontSize="12" 
+                                        ToolTip="Previous Page" Background="Transparent" BorderThickness="0"
+                                        Width="32" Height="32" Click="PrevPage_Click" 
+                                        IsEnabled="{Binding CanGoBack}"/>
+                                <Button Content="&#xE72A;" FontFamily="Segoe MDL2 Assets" FontSize="12" 
+                                        ToolTip="Next Page" Background="Transparent" BorderThickness="0"
+                                        Width="32" Height="32" Margin="4,0,0,0" Click="NextPage_Click"
+                                        IsEnabled="{Binding CanGoForward}"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Data Grid -->
+                    <DataGrid x:Name="InventoryGrid" 
+                              ItemsSource="{Binding Items}"
+                              AutoGenerateColumns="False" IsReadOnly="True" 
+                              Background="Transparent" BorderThickness="0" GridLinesVisibility="Horizontal"
+                              HeadersVisibility="Column" SelectionUnit="FullRow">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Item Name" Binding="{Binding Name}" Width="2*"/>
+                            <DataGridTextColumn Header="Stock Group" Binding="{Binding StockGroup}" Width="*"/>
+                            <DataGridTextColumn Header="Unit" Binding="{Binding Unit}" Width="Auto"/>
+                            <DataGridTextColumn Header="Closing Stock" Binding="{Binding ClosingBalance, StringFormat={}{0:N2}}" Width="Auto">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                                        <Setter Property="Margin" Value="0,0,10,0"/>
+                                        <Setter Property="FontWeight" Value="Bold"/>
+                                        <Setter Property="Foreground" Value="{StaticResource PrimaryTeal}"/>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
             </Grid>
         </Border>
     </Grid>

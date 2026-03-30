@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -8,20 +11,67 @@ using System.Windows.Input;
 using Acczite20.Data;
 using Acczite20.Models;
 using Acczite20.Services;
+using Acczite20.Services.Explorer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Acczite20.Views.Pages
 {
-    public partial class InventoryExplorerPage : Page
+    public partial class InventoryExplorerPage : Page, INotifyPropertyChanged
     {
         private readonly AppDbContext _dbContext;
-        private List<StockItem> _allItems = new();
+        private readonly Acczite20.Services.Explorer.InventoryExplorerService _inventoryService;
 
-        public InventoryExplorerPage(AppDbContext dbContext)
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        private ObservableCollection<StockItemDto> _items = new();
+        public ObservableCollection<StockItemDto> Items
+        {
+            get => _items;
+            set { _items = value; OnPropertyChanged(); }
+        }
+
+        private int _currentPage = 1;
+        public int CurrentPage
+        {
+            get => _currentPage;
+            set { _currentPage = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanGoBack)); OnPropertyChanged(nameof(CanGoForward)); }
+        }
+
+        private int _totalPages = 1;
+        public int TotalPages
+        {
+            get => _totalPages;
+            set { _totalPages = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanGoForward)); }
+        }
+
+        private long _totalRecords = 0;
+        public long TotalRecords
+        {
+            get => _totalRecords;
+            set { _totalRecords = value; OnPropertyChanged(); }
+        }
+
+        private int _pageSize = 50;
+        public int PageSize
+        {
+            get => _pageSize;
+            set { _pageSize = value; OnPropertyChanged(); }
+        }
+
+        public bool CanGoBack => CurrentPage > 1;
+        public bool CanGoForward => CurrentPage < TotalPages;
+
+        public InventoryExplorerPage(AppDbContext dbContext, Acczite20.Services.Explorer.InventoryExplorerService inventoryService)
         {
             InitializeComponent();
             _dbContext = dbContext;
+            _inventoryService = inventoryService;
+            DataContext = this;
             Loaded += InventoryExplorerPage_Loaded;
         }
 
@@ -32,54 +82,24 @@ namespace Acczite20.Views.Pages
 
         private async Task LoadDataAsync()
         {
+            LoadingRing.IsActive = true;
             LoadingRing.Visibility = Visibility.Visible;
             InventoryGrid.Visibility = Visibility.Collapsed;
 
             try
             {
-                var dbType = SessionManager.Instance.SelectedDatabaseType;
-                var orgId = SessionManager.Instance.OrganizationId;
-                var orgObjectId = SessionManager.Instance.OrganizationObjectId;
-                
-                (Application.Current as App)?.LogBreadcrumb($"InventoryExplorerPage: Loading data. DB={dbType}, SQLOrg={orgId}, MongoOrg={orgObjectId}");
+                int skip = (CurrentPage - 1) * PageSize;
+                var (items, total) = await _inventoryService.SearchStockItemsAsync(SearchBox.Text, skip, PageSize);
 
-                if (dbType == "MongoDB" || string.IsNullOrWhiteSpace(dbType))
+                TotalRecords = total;
+                TotalPages = (int)Math.Ceiling((double)total / PageSize);
+                if (TotalPages == 0) TotalPages = 1;
+
+                Items.Clear();
+                foreach (var item in items)
                 {
-                    var mongoService = ((App)Application.Current).ServiceProvider.GetRequiredService<Acczite20.Services.MongoService>();
-                    var allCollections = await mongoService.ListCollectionsAsync();
-                    (Application.Current as App)?.LogBreadcrumb($"InventoryExplorerPage: Mongo Collections: {string.Join(", ", allCollections)}");
-
-                    var inventoryService = ((App)Application.Current).ServiceProvider.GetRequiredService<Acczite20.Services.Explorer.InventoryExplorerService>();
-                    var items = await inventoryService.SearchStockItemsAsync(SearchBox.Text);
-                    
-                    (Application.Current as App)?.LogBreadcrumb($"InventoryExplorerPage: Found {items.Count} items in MongoDB");
-
-                    _allItems = items.Select(i => new StockItem 
-                    { 
-                        Name = i.Name, 
-                        StockGroup = i.StockGroup,
-                        BaseUnit = i.Unit,
-                        OpeningBalance = 0, // MongoDB might not have this easily
-                        ClosingBalance = i.ClosingBalance
-                    }).ToList();
+                    Items.Add(item);
                 }
-                else
-                {
-                    (Application.Current as App)?.LogBreadcrumb($"InventoryExplorerPage: Querying SQL for org {orgId}");
-                    _allItems = await _dbContext.StockItems
-                        .Where(s => s.OrganizationId == orgId)
-                        .OrderBy(s => s.Name)
-                        .ToListAsync();
-                    (Application.Current as App)?.LogBreadcrumb($"InventoryExplorerPage: Found {_allItems.Count} items in SQL");
-                }
-
-                // Prepare groups for filtering
-                var groups = _allItems.Select(s => s.StockGroup).Distinct().OrderBy(g => g).ToList();
-                groups.Insert(0, "All Groups");
-                GroupFilter.ItemsSource = groups;
-                GroupFilter.SelectedIndex = 0;
-
-                UpdateFilteredGrid();
             }
             catch (Exception ex)
             {
@@ -87,37 +107,50 @@ namespace Acczite20.Views.Pages
             }
             finally
             {
+                LoadingRing.IsActive = false;
                 LoadingRing.Visibility = Visibility.Collapsed;
                 InventoryGrid.Visibility = Visibility.Visible;
             }
         }
 
-        private void UpdateFilteredGrid()
+        private async void SearchBox_KeyUp(object sender, KeyEventArgs e)
         {
-            var searchText = SearchBox.Text.ToLower().Trim();
-            var selectedGroup = GroupFilter.SelectedItem as string;
-
-            var filtered = _allItems.Where(s => 
-                (string.IsNullOrEmpty(searchText) || s.Name.ToLower().Contains(searchText)) &&
-                (selectedGroup == "All Groups" || s.StockGroup == selectedGroup)
-            ).ToList();
-
-            InventoryGrid.ItemsSource = filtered;
+            if (e.Key == Key.Enter)
+            {
+                CurrentPage = 1;
+                await LoadDataAsync();
+            }
         }
 
-        private void SearchBox_KeyUp(object sender, KeyEventArgs e)
+        private async void PrevPage_Click(object sender, RoutedEventArgs e)
         {
-            UpdateFilteredGrid();
+            if (CurrentPage > 1)
+            {
+                CurrentPage--;
+                await LoadDataAsync();
+            }
         }
 
-        private void Filter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private async void NextPage_Click(object sender, RoutedEventArgs e)
         {
-            UpdateFilteredGrid();
+            if (CurrentPage < TotalPages)
+            {
+                CurrentPage++;
+                await LoadDataAsync();
+            }
+        }
+
+        private async void Filter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            CurrentPage = 1;
+            await LoadDataAsync();
         }
 
         private async void Refresh_Click(object sender, RoutedEventArgs e)
         {
+            CurrentPage = 1;
             await LoadDataAsync();
         }
+
     }
 }

@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Acczite20.Data;
 using Acczite20.Models;
+using Acczite20.Models.Warehouse;
 
 namespace Acczite20.Services.Reports
 {
@@ -44,6 +45,7 @@ namespace Acczite20.Services.Reports
         public string GroupName { get; set; } = string.Empty;
         public string RootGroup { get; set; } = string.Empty;
         public string NatureOfGroup { get; set; } = string.Empty;
+        public bool AffectsGrossProfit { get; set; }
         public int Depth { get; set; } // 0 = root, 1 = child, etc.
 
         public decimal TotalDebit => Ledgers.Sum(l => l.DebitBalance) + ChildGroups.Sum(c => c.TotalDebit);
@@ -144,43 +146,51 @@ namespace Acczite20.Services.Reports
                 rootCache[g.Name] = ResolveRoot(g.Name, groupMap);
             }
 
-            // ─── Step 3: Aggregate period transaction totals per ledger ───
-            var entriesQuery = _context.LedgerEntries.IgnoreQueryFilters()
-                .Include(e => e.Voucher)
-                .Where(e => e.OrganizationId == orgId && !e.IsDeleted
-                         && e.Voucher != null && !e.Voucher.IsDeleted && !e.Voucher.IsCancelled && !e.Voucher.IsOptional
-                         && e.Voucher.VoucherDate <= targetDate);
+            // ─── Step 3: Single-pass fact-table aggregation ─────────────────────
+            // Groups by LedgerId (Guid FK) — no string matching.
+            // CASE expressions split prior-period net from period debit/credit in one scan.
+            // Hits covering index: (OrganizationId, VoucherDate, VoucherId) INCLUDE (Debit, Credit, LedgerId)
+            Dictionary<Guid, (decimal PriorNet, decimal PeriodDebit, decimal PeriodCredit)> aggByLedger;
 
-            // Apply start date filter if specified (for period-specific TB)
             if (fromDate.HasValue)
             {
-                entriesQuery = entriesQuery.Where(e => e.Voucher.VoucherDate >= fromDate.Value);
+                var periodStart = fromDate.Value;
+                aggByLedger = await _context.FactLedgerEntries.IgnoreQueryFilters()
+                    .Join(_context.FactVouchers.IgnoreQueryFilters(),
+                          fle => fle.VoucherId, fv => fv.Id, (fle, fv) => new { fle, fv })
+                    .Where(x => x.fle.OrganizationId == orgId
+                             && !x.fle.IsDeleted
+                             && x.fle.VoucherDate    <= targetDate
+                             && !x.fv.IsCancelled
+                             && !x.fv.IsOptional)
+                    .GroupBy(x => x.fle.LedgerId)
+                    .Select(g => new
+                    {
+                        LedgerId     = g.Key,
+                        PriorNet     = g.Sum(x => x.fle.VoucherDate < periodStart ? x.fle.Debit - x.fle.Credit : 0m),
+                        PeriodDebit  = g.Sum(x => x.fle.VoucherDate >= periodStart ? x.fle.Debit  : 0m),
+                        PeriodCredit = g.Sum(x => x.fle.VoucherDate >= periodStart ? x.fle.Credit : 0m),
+                    })
+                    .ToDictionaryAsync(x => x.LedgerId, x => (x.PriorNet, x.PeriodDebit, x.PeriodCredit));
             }
-
-            var aggregatedEntries = await entriesQuery
-                .GroupBy(e => e.LedgerName)
-                .Select(g => new
-                {
-                    LedgerName = g.Key,
-                    TotalDebit = g.Sum(e => e.DebitAmount),
-                    TotalCredit = g.Sum(e => e.CreditAmount)
-                })
-                .ToDictionaryAsync(x => x.LedgerName, x => x, StringComparer.OrdinalIgnoreCase);
-
-            // ─── Step 4: Pre-compute period opening balances in ONE query (not N queries) ───
-            // When fromDate is set, opening = Tally opening + net of all entries before fromDate.
-            // This MUST be a single aggregated query outside the ledger loop — not one query per ledger.
-            Dictionary<string, decimal>? priorNetByLedger = null;
-            if (fromDate.HasValue)
+            else
             {
-                priorNetByLedger = await _context.LedgerEntries.IgnoreQueryFilters()
-                    .Include(e => e.Voucher)
-                    .Where(e => e.OrganizationId == orgId && !e.IsDeleted
-                             && e.Voucher != null && !e.Voucher.IsDeleted && !e.Voucher.IsCancelled && !e.Voucher.IsOptional
-                             && e.Voucher.VoucherDate < fromDate.Value)
-                    .GroupBy(e => e.LedgerName)
-                    .Select(g => new { LedgerName = g.Key, NetBalance = g.Sum(e => e.DebitAmount - e.CreditAmount) })
-                    .ToDictionaryAsync(x => x.LedgerName, x => x.NetBalance, StringComparer.OrdinalIgnoreCase);
+                aggByLedger = await _context.FactLedgerEntries.IgnoreQueryFilters()
+                    .Join(_context.FactVouchers.IgnoreQueryFilters(),
+                          fle => fle.VoucherId, fv => fv.Id, (fle, fv) => new { fle, fv })
+                    .Where(x => x.fle.OrganizationId == orgId
+                             && !x.fle.IsDeleted
+                             && x.fle.VoucherDate    <= targetDate
+                             && !x.fv.IsCancelled
+                             && !x.fv.IsOptional)
+                    .GroupBy(x => x.fle.LedgerId)
+                    .Select(g => new
+                    {
+                        LedgerId     = g.Key,
+                        PeriodDebit  = g.Sum(x => x.fle.Debit),
+                        PeriodCredit = g.Sum(x => x.fle.Credit),
+                    })
+                    .ToDictionaryAsync(x => x.LedgerId, x => (PriorNet: 0m, x.PeriodDebit, x.PeriodCredit));
             }
 
             // ─── Build flat ledger rows with normalized balances ───
@@ -188,23 +198,14 @@ namespace Acczite20.Services.Reports
 
             foreach (var l in ledgers)
             {
-                aggregatedEntries.TryGetValue(l.Name, out var agg);
+                aggByLedger.TryGetValue(l.Id, out var agg);
 
-                decimal debitTurnover = agg?.TotalDebit ?? 0;
-                decimal creditTurnover = agg?.TotalCredit ?? 0;
+                decimal debitTurnover  = agg.PeriodDebit;
+                decimal creditTurnover = agg.PeriodCredit;
 
-                // Normalize opening balance direction:
-                // Tally stores opening balance as:
-                //   positive = debit nature (assets, expenses)
-                //   negative = credit nature (liabilities, income)
-                // We keep this convention for correct ClosingBalance computation.
-                decimal openingBalance = l.OpeningBalance;
-
-                if (fromDate.HasValue && priorNetByLedger != null)
-                {
-                    priorNetByLedger.TryGetValue(l.Name, out var priorNet);
-                    openingBalance = l.OpeningBalance + priorNet;
-                }
+                // Opening = Tally stored opening + net of all transactions before fromDate.
+                // Tally convention: positive = debit-nature, negative = credit-nature.
+                decimal openingBalance = l.OpeningBalance + agg.PriorNet;
 
                 var tbRow = new TrialBalanceLedger
                 {
@@ -287,9 +288,10 @@ namespace Acczite20.Services.Reports
             {
                 nodes[g.Name] = new TrialBalanceGroup
                 {
-                    GroupName = g.Name,
-                    RootGroup = rootCache.TryGetValue(g.Name, out var root) ? root : g.Name,
-                    NatureOfGroup = g.NatureOfGroup
+                    GroupName          = g.Name,
+                    RootGroup          = rootCache.TryGetValue(g.Name, out var root) ? root : g.Name,
+                    NatureOfGroup      = g.NatureOfGroup,
+                    AffectsGrossProfit = g.AffectsGrossProfit,
                 };
             }
 

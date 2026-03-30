@@ -12,7 +12,7 @@
         MinHeight="720"
         MinWidth="1200"
         Background="{StaticResource LightTealBg}"
-        Icon="pack://application:,,,/Assets/app.ico">
+        Icon="pack://application:,,,/Assets/logo.ico">
 
     <Window.Resources>
         <LinearGradientBrush x:Key="StartupBackdrop" StartPoint="0,0" EndPoint="1,1">
@@ -52,36 +52,52 @@
             </Style.Triggers>
         </Style>
 
-        <Style x:Key="WindowActionButtonStyle" TargetType="Button">
-            <Setter Property="Width" Value="40"/>
-            <Setter Property="Height" Value="40"/>
-            <Setter Property="FontSize" Value="18"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="Foreground" Value="{StaticResource CharcoalText}"/>
-            <Setter Property="Background" Value="#F2F7F6"/>
-            <Setter Property="BorderBrush" Value="#D6E4E2"/>
-            <Setter Property="BorderThickness" Value="1"/>
+        <Style x:Key="WindowControlButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="48"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="10"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="20">
-                            <ContentPresenter HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"/>
+                        <Border x:Name="Background" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Background" Property="Background" Value="#10000000"/>
+                                <Setter Property="Foreground" Value="{StaticResource PrimaryTeal}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <Style x:Key="CloseWindowButtonStyle" TargetType="Button" BasedOn="{StaticResource WindowControlButtonStyle}">
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#0F766E"/>
                     <Setter Property="Foreground" Value="White"/>
-                    <Setter Property="BorderBrush" Value="#0F766E"/>
                 </Trigger>
             </Style.Triggers>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Background" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Background" Property="Background" Value="#E81123"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Window.Resources>
 
@@ -92,23 +108,18 @@
             <Ellipse Width="520" Height="520" Fill="#140F766E" Canvas.Right="-140" Canvas.Bottom="-220"/>
         </Canvas>
         
-        <!-- Absolute Window Controls Overlay -->
-        <Grid VerticalAlignment="Top" Height="80" Panel.ZIndex="100" Background="Transparent" MouseDown="Window_MouseDown">
-            <StackPanel Orientation="Horizontal" 
-                        HorizontalAlignment="Right" 
-                        VerticalAlignment="Top" 
-                        Margin="0,24,36,0">
+        <Border VerticalAlignment="Top" Height="34" Panel.ZIndex="100" Background="#0CFFFFFF" MouseDown="Window_MouseDown">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button x:Name="BtnMinimize" 
-                        Content="&#8722;" 
-                        Style="{StaticResource WindowActionButtonStyle}" 
-                        Click="Minimize_Click" 
-                        Margin="0,0,12,0"/>
+                        Content="&#xE921;" 
+                        Style="{StaticResource WindowControlButtonStyle}" 
+                        Click="Minimize_Click"/>
                 <Button x:Name="BtnClose" 
-                        Content="&#10005;" 
-                        Style="{StaticResource WindowActionButtonStyle}" 
+                        Content="&#xE8BB;" 
+                        Style="{StaticResource CloseWindowButtonStyle}" 
                         Click="Close_Click"/>
             </StackPanel>
-        </Grid>
+        </Border>
 
         <Border Margin="36"
                 Background="#F9FCFB"
@@ -143,12 +154,28 @@
                                    FontSize="14"/>
                     </Border>
 
-                    <TextBlock Grid.Row="1"
-                               Text="ACCZITE"
-                               Margin="0,28,0,0"
-                               Foreground="{StaticResource PrimaryTeal}"
-                               FontSize="62"
-                               FontWeight="Bold"/>
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,28,0,0">
+                        <Border Width="82" Height="82" CornerRadius="41" Background="White" Margin="0,0,24,0">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="15" Opacity="0.1" Direction="270" ShadowDepth="2"/>
+                            </Border.Effect>
+                            <Image Source="pack://application:,,,/Assets/logo.jpg" 
+                                   Width="72" 
+                                   Height="72" 
+                                   HorizontalAlignment="Center" 
+                                   VerticalAlignment="Center">
+                                <Image.Clip>
+                                    <EllipseGeometry Center="36,36" RadiusX="36" RadiusY="36"/>
+                                </Image.Clip>
+                            </Image>
+                        </Border>
+                        
+                        <TextBlock Text="ACCZITE"
+                                   Foreground="{StaticResource PrimaryTeal}"
+                                   FontSize="72"
+                                   FontWeight="Bold"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
 
                     <StackPanel Grid.Row="2" Margin="0,18,0,0">
                         <TextBlock Text="Tally sync, database control, and enterprise reporting in one workspace."
@@ -268,29 +295,33 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <Border Width="68"
-                                Height="68"
+                        <Border Width="72"
+                                Height="72"
                                 Background="#E7F4F2"
-                                CornerRadius="34"
-                                HorizontalAlignment="Left">
-                            <TextBlock Text="A"
-                                       Foreground="{StaticResource PrimaryTeal}"
-                                       FontSize="34"
-                                       FontWeight="Bold"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"/>
+                                CornerRadius="36"
+                                HorizontalAlignment="Left"
+                                Margin="0,0,0,32">
+                             <Image Source="pack://application:,,,/Assets/logo.jpg" 
+                                    Width="50" 
+                                    Height="50" 
+                                    HorizontalAlignment="Center" 
+                                    VerticalAlignment="Center">
+                                 <Image.Clip>
+                                     <EllipseGeometry Center="25,25" RadiusX="25" RadiusY="25" />
+                                 </Image.Clip>
+                             </Image>
                         </Border>
 
-                        <StackPanel Grid.Row="1" Margin="0,24,0,0">
+                        <StackPanel Grid.Row="1">
                             <TextBlock Text="Welcome to Acczite"
                                        Foreground="{StaticResource CharcoalText}"
-                                       FontSize="30"
+                                       FontSize="34"
                                        FontWeight="Bold"/>
-                            <TextBlock Text="Secure login to access your workspace."
-                                       Margin="0,12,0,0"
+                            <TextBlock Text="Enterprise workspace gateway."
+                                       Margin="0,8,0,0"
                                        Foreground="{StaticResource CharcoalText}"
-                                       FontSize="14"
-                                       Opacity="0.72"/>
+                                       Opacity="0.6"
+                                       FontSize="15"/>
                         </StackPanel>
 
                         <StackPanel Grid.Row="2" Margin="0,34,0,0">

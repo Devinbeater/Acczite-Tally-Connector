@@ -157,26 +157,20 @@ namespace Acczite20.ViewModels.Wizard
                     return;
                 }
 
-                // 3. Populate the selectable list with counts
+                // 3. Populate binary list
                 foreach (var col in collections)
                 {
                     var item = new SelectableItem { Name = col };
-
-                    if (previousSelections.TryGetValue(col, out var sequence))
-                    {
-                        item.IsSelected = true;
-                        item.SequenceNumber = sequence;
-                    }
-
+                    if (previousSelections.TryGetValue(col, out var sequence)) { item.IsSelected = true; item.SequenceNumber = sequence; }
                     TallyFields.Add(item);
-                    
-                    // Fire-and-forget count loading for each item
-                    _ = Task.Run(async () => {
-                        try {
-                            int count = await _tallyService.GetCollectionCountAsync(col);
-                            item.Count = count;
-                        } catch { }
-                    });
+                }
+
+                // Fast batch load of all counts in ONE request
+                var counts = await _tallyService.GetMultiCollectionCountsAsync(collections);
+                foreach (var item in TallyFields)
+                {
+                    if (counts.TryGetValue(item.Name ?? "", out var count))
+                        item.Count = count;
                 }
 
                 RecomputeSelectionSequence();

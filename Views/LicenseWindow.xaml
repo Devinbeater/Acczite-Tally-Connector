@@ -9,7 +9,7 @@
         WindowStyle="None"
         Background="{StaticResource LightTealBg}"
         AllowsTransparency="False"
-        Icon="/Assets/app.ico">
+        Icon="pack://application:,,,/Assets/logo.ico">
 
     <Window.Resources>
         <Style x:Key="WindowActionButtonStyle" TargetType="Button">

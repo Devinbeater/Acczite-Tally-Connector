@@ -7,48 +7,112 @@
 
     <Grid Margin="24">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- Header -->
-        <DockPanel Grid.Row="0" Margin="0,0,0,20">
-            <TextBlock Text="Profit &amp; Loss Account" FontSize="28" FontWeight="Bold" Foreground="{StaticResource PrimaryTeal}"/>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <DatePicker x:Name="FromDatePicker" Width="120" Margin="0,0,10,0"/>
-                <DatePicker x:Name="ToDatePicker" Width="120" Margin="0,0,10,0"/>
-                <Button Content="Refresh" Click="Refresh_Click" Style="{StaticResource PrimaryButtonStyle}"/>
-            </StackPanel>
-        </DockPanel>
+        <Border Grid.Row="0" Background="{StaticResource BaseWhite}" CornerRadius="8" Padding="20"
+                Margin="0,0,0,16" Effect="{StaticResource CardShadow}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-        <!-- P&L Content -->
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Profit &amp; Loss Account" FontSize="20" FontWeight="SemiBold"
+                               Foreground="{StaticResource PrimaryTeal}"/>
+                    <TextBlock Text="Trading Account and Profit &amp; Loss Statement"
+                               Foreground="{StaticResource CharcoalText}" Opacity="0.7" FontSize="12"/>
+                </StackPanel>
+
+                <!-- Gross Profit badge -->
+                <Border Grid.Column="1" x:Name="GrossProfitBadge" CornerRadius="6" Padding="16,8"
+                        Margin="0,0,12,0" VerticalAlignment="Center">
+                    <StackPanel>
+                        <TextBlock x:Name="TxtGPLabel" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right"/>
+                        <TextBlock x:Name="TxtGrossProfit" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Right"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Net Profit badge -->
+                <Border Grid.Column="2" x:Name="NetProfitBadge" CornerRadius="6" Padding="16,8"
+                        Margin="0,0,16,0" VerticalAlignment="Center">
+                    <StackPanel>
+                        <TextBlock x:Name="TxtNPLabel" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right"/>
+                        <TextBlock x:Name="TxtNetProfit" FontSize="16" FontWeight="Bold" HorizontalAlignment="Right"/>
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Grid.Column="3" Margin="0,0,12,0" VerticalAlignment="Center">
+                    <TextBlock Text="From" FontSize="11" Foreground="{StaticResource GrayText}" Margin="0,0,0,2"/>
+                    <DatePicker x:Name="FromDatePicker" Width="130"/>
+                </StackPanel>
+                <StackPanel Grid.Column="4" VerticalAlignment="Center">
+                    <TextBlock Text="To" FontSize="11" Foreground="{StaticResource GrayText}" Margin="0,0,0,2"/>
+                    <StackPanel Orientation="Horizontal">
+                        <DatePicker x:Name="ToDatePicker" Width="130" Margin="0,0,10,0"/>
+                        <Button Content="Refresh" Click="Refresh_Click"
+                                Style="{StaticResource PrimaryButtonStyle}" Height="34" Width="80"
+                                VerticalAlignment="Bottom"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Two-column P&L body -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="1*"/>
-                <ColumnDefinition Width="1*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Expenditures (Left) -->
-            <Border Grid.Column="0" Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="20" Margin="0,0,10,0" Effect="{StaticResource CardShadow}">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="Expenditures" FontSize="18" FontWeight="SemiBold" Foreground="#EF4444" Margin="0,0,0,15"/>
-                    
-                    <Grid DockPanel.Dock="Bottom" Margin="0,15,0,0">
-                        <TextBlock Text="Total Expenditure" FontWeight="Bold" FontSize="16"/>
-                        <TextBlock x:Name="TxtTotalExpense" Text="₹ 0.00" HorizontalAlignment="Right" FontWeight="Bold" FontSize="16"/>
-                    </Grid>
+            <!-- Left column: Expenditure -->
+            <Border Grid.Column="0" Background="{StaticResource BaseWhite}" CornerRadius="8"
+                    Margin="0,0,8,0" Effect="{StaticResource CardShadow}" ClipToBounds="True">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <!-- TRADING heading -->
+                        <Border Background="#F1F5F9" Padding="16,10">
+                            <TextBlock Text="TRADING ACCOUNT" FontWeight="Bold" FontSize="12"
+                                       Foreground="#64748B"/>
+                        </Border>
 
-                    <ScrollViewer>
-                        <ItemsControl x:Name="ExpenseList">
+                        <ItemsControl x:Name="DirectExpenseList" Margin="0,4,0,4">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Expander Header="{Binding GroupName}" Margin="0,0,0,5" FontWeight="Medium">
-                                        <ItemsControl ItemsSource="{Binding Ledgers}">
+                                    <Expander Margin="8,2" Padding="0">
+                                        <Expander.Header>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{Binding GroupName}"
+                                                           FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding TotalAmount, StringFormat=N2}"
+                                                           Foreground="#EF4444" FontWeight="SemiBold" FontFamily="Consolas"
+                                                           Margin="16,0,4,0"/>
+                                            </Grid>
+                                        </Expander.Header>
+                                        <ItemsControl ItemsSource="{Binding Ledgers}" Margin="16,0,0,4">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Grid Margin="20,5,10,5">
-                                                        <TextBlock Text="{Binding LedgerName}" Foreground="{StaticResource CharcoalText}"/>
-                                                        <TextBlock Text="{Binding Amount, StringFormat=N2}" HorizontalAlignment="Right" Foreground="{StaticResource CharcoalText}"/>
+                                                    <Grid Margin="8,3,8,3">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Text="{Binding LedgerName}"
+                                                                   Foreground="{StaticResource GrayText}" FontSize="12"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Amount, StringFormat=N2}"
+                                                                   Foreground="{StaticResource CharcoalText}"
+                                                                   FontFamily="Consolas" FontSize="12" Margin="12,0,0,0"/>
                                                     </Grid>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
@@ -57,31 +121,59 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                    </ScrollViewer>
-                </DockPanel>
-            </Border>
 
-            <!-- Incomes (Right) -->
-            <Border Grid.Column="1" Background="{StaticResource BaseWhite}" CornerRadius="12" Padding="20" Margin="10,0,0,0" Effect="{StaticResource CardShadow}">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="Incomes" FontSize="18" FontWeight="SemiBold" Foreground="#10B981" Margin="0,0,0,15"/>
+                        <!-- Gross Profit divider (expense side) -->
+                        <Border x:Name="GpDividerLeft" Background="#F0FDF4" BorderBrush="#BBF7D0"
+                                BorderThickness="0,1,0,1" Padding="16,10" Margin="0,4,0,4">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="TxtGpDividerLabel" Grid.Column="0"
+                                           FontWeight="Bold" FontSize="13" Foreground="#15803D"/>
+                                <TextBlock x:Name="TxtGpDividerValue" Grid.Column="1"
+                                           FontWeight="Bold" FontSize="13" FontFamily="Consolas"
+                                           Foreground="#15803D" Margin="16,0,0,0"/>
+                            </Grid>
+                        </Border>
 
-                    <Grid DockPanel.Dock="Bottom" Margin="0,15,0,0">
-                        <TextBlock Text="Total Income" FontWeight="Bold" FontSize="16"/>
-                        <TextBlock x:Name="TxtTotalIncome" Text="₹ 0.00" HorizontalAlignment="Right" FontWeight="Bold" FontSize="16"/>
-                    </Grid>
+                        <!-- P&L heading -->
+                        <Border Background="#F1F5F9" Padding="16,10">
+                            <TextBlock Text="PROFIT &amp; LOSS ACCOUNT" FontWeight="Bold" FontSize="12"
+                                       Foreground="#64748B"/>
+                        </Border>
 
-                    <ScrollViewer>
-                        <ItemsControl x:Name="IncomeList">
+                        <ItemsControl x:Name="IndirectExpenseList" Margin="0,4,0,8">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Expander Header="{Binding GroupName}" Margin="0,0,0,5" FontWeight="Medium">
-                                        <ItemsControl ItemsSource="{Binding Ledgers}">
+                                    <Expander Margin="8,2" Padding="0">
+                                        <Expander.Header>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{Binding GroupName}"
+                                                           FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding TotalAmount, StringFormat=N2}"
+                                                           Foreground="#EF4444" FontWeight="SemiBold" FontFamily="Consolas"
+                                                           Margin="16,0,4,0"/>
+                                            </Grid>
+                                        </Expander.Header>
+                                        <ItemsControl ItemsSource="{Binding Ledgers}" Margin="16,0,0,4">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Grid Margin="20,5,10,5">
-                                                        <TextBlock Text="{Binding LedgerName}" Foreground="{StaticResource CharcoalText}"/>
-                                                        <TextBlock Text="{Binding Amount, StringFormat=N2}" HorizontalAlignment="Right" Foreground="{StaticResource CharcoalText}"/>
+                                                    <Grid Margin="8,3,8,3">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Text="{Binding LedgerName}"
+                                                                   Foreground="{StaticResource GrayText}" FontSize="12"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Amount, StringFormat=N2}"
+                                                                   Foreground="{StaticResource CharcoalText}"
+                                                                   FontFamily="Consolas" FontSize="12" Margin="12,0,0,0"/>
                                                     </Grid>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
@@ -90,17 +182,147 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                    </ScrollViewer>
-                </DockPanel>
+                    </StackPanel>
+                </ScrollViewer>
             </Border>
 
-            <!-- Net Profit/Loss Overlay (Bottom Center) -->
-            <Border Grid.ColumnSpan="2" VerticalAlignment="Bottom" HorizontalAlignment="Center" 
-                    Background="{StaticResource PrimaryTeal}" CornerRadius="20" Padding="30,10" Margin="0,0,0,20" Effect="{StaticResource CardShadow}">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock x:Name="TxtPlLabel" Text="Net Profit:" Foreground="White" FontSize="18" FontWeight="SemiBold" Margin="0,0,10,0"/>
-                    <TextBlock x:Name="TxtNetPl" Text="₹ 0.00" Foreground="White" FontSize="22" FontWeight="Bold"/>
-                </StackPanel>
+            <!-- Right column: Income -->
+            <Border Grid.Column="1" Background="{StaticResource BaseWhite}" CornerRadius="8"
+                    Margin="8,0,0,0" Effect="{StaticResource CardShadow}" ClipToBounds="True">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <!-- TRADING heading -->
+                        <Border Background="#F1F5F9" Padding="16,10">
+                            <TextBlock Text="TRADING ACCOUNT" FontWeight="Bold" FontSize="12"
+                                       Foreground="#64748B"/>
+                        </Border>
+
+                        <ItemsControl x:Name="DirectIncomeList" Margin="0,4,0,4">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Expander Margin="8,2" Padding="0">
+                                        <Expander.Header>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{Binding GroupName}"
+                                                           FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding TotalAmount, StringFormat=N2}"
+                                                           Foreground="#10B981" FontWeight="SemiBold" FontFamily="Consolas"
+                                                           Margin="16,0,4,0"/>
+                                            </Grid>
+                                        </Expander.Header>
+                                        <ItemsControl ItemsSource="{Binding Ledgers}" Margin="16,0,0,4">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="8,3,8,3">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Text="{Binding LedgerName}"
+                                                                   Foreground="{StaticResource GrayText}" FontSize="12"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Amount, StringFormat=N2}"
+                                                                   Foreground="{StaticResource CharcoalText}"
+                                                                   FontFamily="Consolas" FontSize="12" Margin="12,0,0,0"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Expander>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- Gross Loss divider (income side — only visible on Gross Loss) -->
+                        <Border x:Name="GpDividerRight" Visibility="Collapsed"
+                                Background="#FEF2F2" BorderBrush="#FECACA"
+                                BorderThickness="0,1,0,1" Padding="16,10" Margin="0,4,0,4">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="TxtGpRightLabel" Grid.Column="0"
+                                           FontWeight="Bold" FontSize="13" Foreground="#B91C1C"/>
+                                <TextBlock x:Name="TxtGpRightValue" Grid.Column="1"
+                                           FontWeight="Bold" FontSize="13" FontFamily="Consolas"
+                                           Foreground="#B91C1C" Margin="16,0,0,0"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- P&L heading -->
+                        <Border Background="#F1F5F9" Padding="16,10">
+                            <TextBlock Text="PROFIT &amp; LOSS ACCOUNT" FontWeight="Bold" FontSize="12"
+                                       Foreground="#64748B"/>
+                        </Border>
+
+                        <ItemsControl x:Name="IndirectIncomeList" Margin="0,4,0,8">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Expander Margin="8,2" Padding="0">
+                                        <Expander.Header>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{Binding GroupName}"
+                                                           FontWeight="SemiBold" Foreground="{StaticResource CharcoalText}"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding TotalAmount, StringFormat=N2}"
+                                                           Foreground="#10B981" FontWeight="SemiBold" FontFamily="Consolas"
+                                                           Margin="16,0,4,0"/>
+                                            </Grid>
+                                        </Expander.Header>
+                                        <ItemsControl ItemsSource="{Binding Ledgers}" Margin="16,0,0,4">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="8,3,8,3">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Text="{Binding LedgerName}"
+                                                                   Foreground="{StaticResource GrayText}" FontSize="12"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Amount, StringFormat=N2}"
+                                                                   Foreground="{StaticResource CharcoalText}"
+                                                                   FontFamily="Consolas" FontSize="12" Margin="12,0,0,0"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Expander>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- Column totals footer -->
+        <Grid Grid.Row="2" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Background="#FEF2F2" CornerRadius="6" Padding="16,10" Margin="0,0,8,0">
+                <Grid>
+                    <TextBlock Text="Total Expenditure" FontWeight="Bold" Foreground="#991B1B"/>
+                    <TextBlock x:Name="TxtTotalExpense" HorizontalAlignment="Right"
+                               FontWeight="Bold" FontFamily="Consolas" Foreground="#991B1B"/>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="1" Background="#F0FDF4" CornerRadius="6" Padding="16,10" Margin="8,0,0,0">
+                <Grid>
+                    <TextBlock Text="Total Income" FontWeight="Bold" Foreground="#166534"/>
+                    <TextBlock x:Name="TxtTotalIncome" HorizontalAlignment="Right"
+                               FontWeight="Bold" FontFamily="Consolas" Foreground="#166534"/>
+                </Grid>
             </Border>
         </Grid>
     </Grid>
